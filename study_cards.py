@@ -23,6 +23,7 @@ import sys, os, termios, tty
 import random
 from collections.abc import Iterable, Iterator
 
+from lp_utils.tty import CbreakTty, get_key
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="study_cards: flash card style study aid")
@@ -259,31 +260,6 @@ def read_initial_text() -> list[str]:
         return []
     text = sys.stdin.read()
     return text.splitlines(keepends=True)
-
-
-class CbreakTty:
-    def __enter__(self):
-        self.tty = open("/dev/tty", "rb", buffering=0)
-        self.fd = self.tty.fileno()
-        self.old = termios.tcgetattr(self.fd)
-
-        # Start from cbreak
-        tty.setcbreak(self.fd)
-
-        # Ensure signals are ON so ^C triggers KeyboardInterrupt
-        new = termios.tcgetattr(self.fd)
-        IF, OF, CF, LF, IS, OS, CC = 0, 1, 2, 3, 4, 5, 6
-        new[LF] |= termios.ISIG               # enable INTR/QUIT/SUSP
-        new[CC][termios.VINTR] = 3            # ^C (0x03)
-        termios.tcsetattr(self.fd, termios.TCSADRAIN, new)
-        return self.tty
-
-    def __exit__(self, *exc):
-        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
-        self.tty.close()
-
-def get_key(tty_file) -> str:
-    return tty_file.read(1).decode('utf-8', 'ignore')
 
 
 def main():
