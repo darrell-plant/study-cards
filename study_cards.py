@@ -187,7 +187,7 @@ def run_session(pairs: list[tuple[str, str]], warnings: list[str]):
     print_header(len(pairs), warnings, mode)
 
     try:
-        with RawTty() as kbd:
+        with CbreakTty() as kbd:
             while True:
                 key = get_key(kbd)
 
@@ -261,14 +261,24 @@ def read_initial_text() -> list[str]:
     return text.splitlines(keepends=True)
 
 
-class RawTty:
+class CbreakTty:
     def __enter__(self):
         self.tty = open("/dev/tty", "rb", buffering=0)
         self.fd = self.tty.fileno()
         self.old = termios.tcgetattr(self.fd)
-        tty.setcbreak(self.fd)  # ← swap setraw → setcbreak
+
+        # Start from cbreak
+        tty.setcbreak(self.fd)
+
+        # Ensure signals are ON so ^C triggers KeyboardInterrupt
+        new = termios.tcgetattr(self.fd)
+        IF, OF, CF, LF, IS, OS, CC = 0, 1, 2, 3, 4, 5, 6
+        new[LF] |= termios.ISIG               # enable INTR/QUIT/SUSP
+        new[CC][termios.VINTR] = 3            # ^C (0x03)
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, new)
         return self.tty
-    def __exit__(self, exc_type, exc, tb):
+
+    def __exit__(self, *exc):
         termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
         self.tty.close()
 
