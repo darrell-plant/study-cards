@@ -18,12 +18,20 @@ Controls:
   q     : quit
 """
 
-import sys
-import os
+import argparse
+import sys, os, termios, tty
 import random
-import termios
-import tty
-from typing import List, Tuple
+from collections.abc import Iterable, Iterator
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="study_cards: flash card style study aid")
+    parser.add_argument(
+        "files",
+        nargs="*",
+        help="Files to read (if empty, read from stdin). Use -- to separate flags from filenames that start with -",
+    )
+    return parser.parse_args(argv)
 
 # ---------- ANSI colours ----------
 RESET = "\033[0m"
@@ -63,40 +71,19 @@ def looks_english(s: str) -> bool:
         return False
     return any("A" <= c <= "Z" or "a" <= c <= "z" for c in s)
 
-# ---------- Raw key reader (macOS/Linux) ----------
-
-def read_key() -> str:
-    """
-    Read a single keypress (no Enter needed).
-    Returns a one-character string (space, letters, etc.).
-    """
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch = sys.stdin.read(1)
-        return ch
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-
 # ---------- Parser ----------
 
-def parse_pairs(path: str):
-    """
-    Parse a file containing alternating JA/EN lines, ignoring blank lines.
-    Returns:
-      pairs: List[Tuple[japanese, english]]
-      warnings: List[str]
-    """
-    warnings: List[str] = []
-    pairs: List[Tuple[str, str]] = []
 
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        print(f"Error: File not found: {path}")
-        sys.exit(1)
+def parse_pairs(lines: list[str]) -> tuple[list[tuple[str, str]], list[str]]:
+    """
+    Parse a list of alternating JA/EN lines, ignoring blank lines.
+    Returns:
+      pairs: list[tuple[japanese, english]]
+      warnings: list[str]
+    """
+    warnings: list[str] = []
+    pairs: list[tuple[str, str]] = []
+
 
     stripped = [(i + 1, ln.strip()) for i, ln in enumerate(lines)]
 
@@ -149,11 +136,11 @@ HELP_TEXT = """Controls:
   q     : quit
 """
 
-def print_header(pairs_count: int, warnings: List[str], filepath: str, mode: str):
+def print_header(pairs_count: int, warnings: list[str], mode: str):
     mode_str = "EN→JA" if mode == "EN2JA" else "JA→EN"
     print("=" * 60)
     print("Study Cards (Japanese ↔ English)")
-    print(f"File: {filepath}")
+    print(f"File: ???")
     print(f"Parsed pairs: {pairs_count}")
     print("=" * 60)
     if warnings:
@@ -183,7 +170,7 @@ def show_answer(ja: str, en: str, mode: str):
     else:
         print(colour(en, FG_YELLOW))
 
-def run_session(pairs: List[Tuple[str, str]], filepath: str, warnings: List[str]):
+def run_session(pairs: list[tuple[str, str]], warnings: list[str]):
     global USE_COLOUR
 
     if not pairs:
@@ -197,65 +184,108 @@ def run_session(pairs: List[Tuple[str, str]], filepath: str, warnings: List[str]
     idx = 0
     state = "await_prompt"  # or "await_answer"
 
-    print_header(len(pairs), warnings, filepath, mode)
+    print_header(len(pairs), warnings, mode)
 
     try:
-        while True:
-            key = read_key()
+        with RawTty() as kbd:
+            while True:
+                key = get_key(kbd)
 
-            if key == "q":
-                print("\nQuitting. おつかれさまでした！")
-                break
-            elif key in ("h", "?"):
-                print()
-                print(HELP_TEXT.strip())
-                print()
-            elif key == "e":
-                mode = "EN2JA"
-                print("Mode → EN→JA")
-            elif key == "j":
-                mode = "JA2EN"
-                print("Mode → JA→EN")
-            elif key == "r":
-                random.shuffle(order)
-                idx = 0
-                state = "await_prompt"
-                print("Shuffled. Back to start.")
-            elif key == "c":
-                USE_COLOUR = not USE_COLOUR
-                print(f"Colours {'ON' if USE_COLOUR else 'OFF'}.")
-            elif key == " ":
-                pair = pairs[order[idx]]
-                ja, en = pair
-
-                if state == "await_prompt":
-                    show_prompt(ja, en, mode)
-                    state = "await_answer"
-                else:
-                    show_answer(ja, en, mode)
-                    print()  # blank line after full pair
-                    idx += 1
-                    if idx >= len(order):
-                        random.shuffle(order)
-                        idx = 0
-                        print("(Reached end. Reshuffled.)")
+                if key == "q":
+                    print("\nQuitting. おつかれさまでした！")
+                    break
+                elif key in ("h", "?"):
+                    print()
+                    print(HELP_TEXT.strip())
+                    print()
+                elif key == "e":
+                    mode = "EN2JA"
+                    print("Mode → EN→JA")
+                elif key == "j":
+                    mode = "JA2EN"
+                    print("Mode → JA→EN")
+                elif key == "r":
+                    random.shuffle(order)
+                    idx = 0
                     state = "await_prompt"
-            else:
-                # ignore others
-                pass
+                    print("Shuffled. Back to start.")
+                elif key == "c":
+                    USE_COLOUR = not USE_COLOUR
+                    print(f"Colours {'ON' if USE_COLOUR else 'OFF'}.")
+                elif key == " ":
+                    pair = pairs[order[idx]]
+                    ja, en = pair
+
+                    if state == "await_prompt":
+                        show_prompt(ja, en, mode)
+                        state = "await_answer"
+                    else:
+                        show_answer(ja, en, mode)
+                        print()  # blank line after full pair
+                        idx += 1
+                        if idx >= len(order):
+                            random.shuffle(order)
+                            idx = 0
+                            print("(Reached end. Reshuffled.)")
+                        state = "await_prompt"
+                else:
+                    # ignore others
+                    pass
     except KeyboardInterrupt:
         print("\nInterrupted. Bye!")
 
 # ---------- Entry ----------
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: study_cards.py /path/to/sentences.txt")
-        sys.exit(2)
+def iter_files_lines(filenames: list[str]) -> Iterator[str]:
+    """
+    Yield lines from the given files (in order).
+    Files that can't be opened are reported and skipped.
+    """
+    for fname in filenames:
+        try:
+            with open(fname, "r", encoding="utf-8") as f:
+                for line in f:
+                    yield line
+        except FileNotFoundError:
+            print(f"study-cards.py: {fname}: No such file", file=sys.stderr)
+        except PermissionError:
+            print(f"study-cards.py: {fname}: Permission denied", file=sys.stderr)
+        except OSError as e:
+            print(f"study-cards.py: {fname}: {e}", file=sys.stderr)
 
-    path = sys.argv[1]
-    pairs, warnings = parse_pairs(path)
-    run_session(pairs, path, warnings)
+
+def read_initial_text() -> list[str]:
+    if sys.stdin.isatty():
+        return []
+    text = sys.stdin.read()
+    return text.splitlines(keepends=True)
+
+
+class RawTty:
+    def __enter__(self):
+        self.tty = open("/dev/tty", "rb", buffering=0)
+        self.fd = self.tty.fileno()
+        self.old = termios.tcgetattr(self.fd)
+        tty.setcbreak(self.fd)  # ← swap setraw → setcbreak
+        return self.tty
+    def __exit__(self, exc_type, exc, tb):
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
+        self.tty.close()
+
+def get_key(tty_file) -> str:
+    return tty_file.read(1).decode('utf-8', 'ignore')
+
+
+def main():
+    args = parse_args()
+
+    if args.files:
+        lines = list(iter_files_lines(args.files))
+    else:
+        lines = read_initial_text()
+
+    pairs, warnings = parse_pairs(lines)
+    run_session(pairs, warnings)
 
 if __name__ == "__main__":
     main()
