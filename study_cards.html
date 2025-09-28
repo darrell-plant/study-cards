@@ -71,9 +71,9 @@
     <h1 id="headerTitle">Study Cards</h1>
 
     <div id="inputCard" class="card">
-      <p class="hint">Paste pairs in this exact format:<br>
-        <strong>JP line</strong> ↵<br><strong>EN line</strong> ↵<br>
-        (one or more empty lines)
+      <p class="hint">Use 📁 to select a folder to store sentence files.<br>
+        Grant permissions when prompted.<br>
+        Use 🔄 to get the latest sentence files.
       </p>
 
       <div class="inline-group">
@@ -93,7 +93,16 @@
 
       <br>
 
-      <textarea id="pairs"></textarea><br>
+      <textarea id="pairs" placeholder="NAME: Example
+
+こんにちは
+Hello
+
+ありがとうございます
+Thank you
+
+すみません
+Excuse me"></textarea><br>
 
       <button id="startBtn">Start session</button>
     </div>
