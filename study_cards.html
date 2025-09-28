@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Study Cards — Offline Web App</title>
+  <!-- v2.8 — canonical slugs in storage; Title-Case display; registry migration -->
+  <style>
+    :root{ --bar-h: 76px; }
+    body{font-family:sans-serif;background:#0b0f14;color:#3dba50;margin:0}
+    .wrap{padding:1rem; padding-bottom:calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));}
+
+    textarea{width:100%;min-height:200px;box-sizing:border-box;}
+    button{margin:0.25rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#3dba50;cursor:pointer}
+    button:hover{filter:brightness(1.08)}
+    .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
+    .card{border:1px solid #333;padding:1rem;margin:1rem;border-radius:12px;background:#121922;box-sizing:border-box}
+    .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+
+    .viewerBox{display:grid;gap:10px}
+    .viewerBox .viewerPanel{
+      height:28vh;min-height:28vh;max-height:28vh;
+      background:#0f1722;border:1px solid #243244;border-radius:12px;
+      padding:12px;font-size:1.2rem;line-height:1.6;width:100%;box-sizing:border-box;
+      white-space:pre-wrap;user-select:text;overflow:auto;
+    }
+    #promptArea{color:#a3e635;}
+    #answerArea{color:#facc15;}
+
+    .bar{position:fixed;left:0;right:0;bottom:0;height:var(--bar-h);
+      display:flex;align-items:center;justify-content:flex-end;gap:.6rem;
+      padding:0.6rem max(0.8rem, env(safe-area-inset-right));
+      padding-bottom:calc(0.6rem + env(safe-area-inset-bottom, 0px));
+      background:linear-gradient(180deg,rgba(11,15,20,.0) 0%,#0b0f14 12%,#0b0f14 100%);
+      border-top:1px solid #1f2a36;box-sizing:border-box}
+    .bar .go{font-size:1.15rem;padding:0.9rem 1.3rem;border-radius:16px;background:#3fb950;color:#06200c;border:1px solid #46c35f}
+    .bar .back{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#38bdf8;color:#042635;border:1px solid #7dd3fc}
+    .bar .shuffle{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#facc15;color:#1f1300;border:1px solid #fde68a}
+    .bar .go:active,.bar .back:active,.bar .shuffle:active{transform:translateY(1px)}
+    .bar .aux{background:#1f2937}
+
+    h1{margin:1rem}
+
+    /* Saved sets label */
+    label[for="setSelect"]{ color:#facc15; font-weight:bold; }
+
+    .inline-group{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+
+    /* Hint paragraph colour */
+    .hint{ color:#3dba5073; }
+    select:disabled{ opacity:.55; filter:saturate(.6); }
+
+    /* Toast */
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%) translateY(6px);
+      bottom:calc(var(--bar-h) + 16px);
+      background:#1f2937; color:#fefce8; border:1px solid #334155;
+      padding:.55rem .8rem; border-radius:12px; font-size:.95rem;
+      opacity:0; pointer-events:none; transition:opacity .18s, transform .18s;
+      box-shadow:0 6px 20px rgba(0,0,0,.35);
+    }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="headerTitle">Study Cards</h1>
+
+    <div id="inputCard" class="card">
+      <p class="hint">Paste pairs in this exact format:<br>
+        <strong>JP line</strong> ↵<br><strong>EN line</strong> ↵<br>
+        (one or more empty lines)<br>
+        Optional header: <code>NAME: My Set</code> on the first line<br>
+        If omitted, the set will be saved as <em>Unnamed 1</em> (auto-numbered).
+      </p>
+
+      <div class="inline-group">
+        <label for="setSelect">Sets:</label>
+        <select id="setSelect" disabled>
+          <option value="">(none)</option>
+        </select>
+        <button id="chooseFolderBtn" class="iconBtn" title="Choose/change sentences folder" aria-label="Choose or change sentences folder">📁</button>
+        <button id="forgetFolderBtn" class="iconBtn" title="Forget stored folder (you can re-pick)" aria-label="Forget stored folder">🧹</button>
+        <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
+      </div>
+
+      <br>
+
+      <textarea id="pairs"></textarea><br>
+
+      <button id="startBtn">Start session</button>
+    </div>
+
+    <div id="sessionCard" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
+        <div id="progress"></div>
+        <div>
+          <button id="reverseBtn" class="aux" title="Flip JP↔EN for this session">Reverse JP↔EN</button>
+          <button id="backBtnTop" class="aux">Load new set</button>
+        </div>
+      </div>
+
+      <div class="viewerBox">
+        <div id="promptArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
+        <div id="answerArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bar" id="actionBar" style="display:none">
+    <button id="shuffleBtn" class="shuffle">Shuffle</button>
+    <button id="backStepBtn" class="back">Back</button>
+    <button id="goBtn" class="go">Go</button>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const $=id=>document.getElementById(id);
+
+    // --- File System Access API (Chrome) ---
+    let dirHandle = null;           // chosen /sentences directory
+    const EXT = '.data';            // deck file extension
+
+    function slugFromFilename(name){
+      return name.replace(/\.[^.]+$/, '');
+    }
+    function filenameFromSlug(slug){
+      return `${slug}${EXT}`;
+    }
+
+    async function chooseSentencesFolder(){
+      try{
+        dirHandle = await window.showDirectoryPicker({ mode:'readwrite' });
+        await navigator.storage?.persist?.();   // request persistent storage
+        await idbSet('sentencesDir', dirHandle);
+        $('setSelect').disabled = false;
+        await populateSetSelectFromDir();
+        showToast('Folder selected');
+      }catch(err){
+        // user cancelled; keep disabled state
+      }
+    }
+
+    async function listDataFiles(){
+      if(!dirHandle) return [];
+      const files=[];
+      for await (const [name, handle] of dirHandle.entries()){
+        if(handle.kind==='file' && name.toLowerCase().endsWith(EXT)){
+          files.push({ name, handle });
+        }
+      }
+      const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
+      files.sort((a,b)=>coll.compare(a.name,b.name));
+      return files;
+    }
+
+    async function readFileText(fileHandle){
+      const file = await fileHandle.getFile();
+      return await file.text();
+    }
+
+    async function writeFileText(slug, text){
+      if(!dirHandle) throw new Error('No folder selected');
+      const fh = await dirHandle.getFileHandle(filenameFromSlug(slug), { create:true });
+      const ws = await fh.createWritable();
+      await ws.write(text);
+      await ws.close();
+    }
+
+    // --- IndexedDB for persisting FileSystemHandles ---
+    const DB_NAME='sc_fs_db', STORE='handles';
+    function idbOpen(){
+      return new Promise((resolve, reject)=>{
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = (e)=>{ e.target.result.createObjectStore(STORE); };
+        req.onsuccess = ()=> resolve(req.result);
+        req.onerror = ()=> reject(req.error);
+      });
+    }
+    async function idbSet(key, value){
+      const db = await idbOpen();
+      return new Promise((resolve, reject)=>{
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete=()=>resolve();
+        tx.onerror=()=>reject(tx.error);
+        tx.objectStore(STORE).put(value, key);
+      });
+    }
+    async function idbGet(key){
+      const db = await idbOpen();
+      return new Promise((resolve, reject)=>{
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).get(key);
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror=()=>reject(req.error);
+      });
+    }
+    async function idbDel(key){
+      const db = await idbOpen();
+      return new Promise((resolve, reject)=>{
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete=()=>resolve();
+        tx.onerror=()=>reject(tx.error);
+        tx.objectStore(STORE).delete(key);
+      });
+    }
+
+    async function populateSetSelectFromDir(selectedSlug=''){
+      const sel=$('setSelect');
+      const current = sel.value;
+      sel.innerHTML='<option value="">(none)</option>';
+      const files = await listDataFiles();
+      const items = files.map(f=>{ const slug = slugFromFilename(f.name); return { slug, display: titleCase(slugToNiceName(slug)) }; });
+      const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
+      items.sort((a,b)=>coll.compare(a.display,b.display)||a.slug.localeCompare(b.slug));
+      for(const {slug,display} of items){
+        const opt=document.createElement('option'); opt.value=slug; opt.textContent=display; sel.appendChild(opt);
+      }
+      const toSet = selectedSlug || (items.some(i=>i.slug===current)? current : '');
+      sel.value = toSet;
+    }
+
+    // Utils
+    function slugify(name){
+      return name.toLowerCase()
+                 .replace(/[^\p{L}\p{N}\s_-]/gu,'')
+                 .trim()
+                 .replace(/\s+/g,'_');
+    }
+    function titleCase(s){
+      return s.toLowerCase().trim().split(/\s+/).map(w=>w? w[0].toUpperCase()+w.slice(1):'').join(' ');
+    }
+
+    const PREFIX = 'sc_progress:';
+    function keyForSlug(slug){ return PREFIX + slug; }
+    function slugToNiceName(slug){ return titleCase(slug.replace(/[_-]+/g,' ')); }
+
+    // Progress-only storage (localStorage)
+    function loadProgress(slug){
+      try{ return JSON.parse(localStorage.getItem(keyForSlug(slug))||'null'); }
+      catch{ return null; }
+    }
+    function saveProgressObj(slug, obj){
+      try{ localStorage.setItem(keyForSlug(slug), JSON.stringify(obj)); }catch{}
+    }
+
+    // Unnamed generator using existing files in the chosen folder
+    async function nextUnnamed(){
+      const files = await listDataFiles();
+      const have = new Set(files.map(f=>slugFromFilename(f.name)));
+      let n=1, slug;
+      do { slug = slugify(`Unnamed ${n}`); n++; } while(have.has(slug));
+      return { name: titleCase(slug.replace(/_/g,' ')), slug };
+    }
+
+    // Parser ignores a first-line NAME header (case-insensitive)
+    function parsePairs(text){
+      const lines=text.split(/\r?\n/);
+      let i=0;
+      if(/^\s*NAME:\s*/i.test(lines[0]||'')){ i=1; }
+      const pairs=[];
+      for(; i<lines.length; ){
+        const jp=(lines[i]??'').trim();
+        const en=(lines[i+1]??'').trim();
+        if(jp&&en){pairs.push([jp,en]);i+=2;}else{i++;}
+        while(i<lines.length && !lines[i].trim()) i++;
+      }
+      return pairs;
+    }
+
+    const state={cards:[],idx:0,shown:false,promptSide:'jp',done:false,setName:'',setSlug:''};
+
+    function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
+
+    async function startSession(){
+      if(!dirHandle){ await chooseSentencesFolder(); if(!dirHandle) return; }
+
+      const userText = $('pairs').value.trim();
+      const lines = userText.split(/\r?\n/);
+      const m = (lines[0]||'').match(/^\s*name:\s*(.+)/i);
+
+      // Resolve display name (Title-Case) and slug (canonical)
+      let displayName, slug;
+      if(m){
+        displayName = titleCase(m[1].trim());
+        slug = slugify(displayName);
+        lines[0] = `NAME: ${displayName}`; // normalise header
+      }else{
+        // If user is loading an existing set via select, prefer that
+        const selectedSlug = $('setSelect').value;
+        if(selectedSlug){
+          slug = selectedSlug;
+          displayName = titleCase(slugToNiceName(slug));
+          lines.unshift(`NAME: ${displayName}`);
+        } else {
+          const nu = await nextUnnamed();
+          displayName = nu.name; slug = nu.slug;
+          lines.unshift(`NAME: ${displayName}`);
+        }
+      }
+      const textToSave = lines.join('\n');
+
+      state.setName = displayName;
+      state.setSlug = slug;
+
+      // ---- Load saved progress FIRST so we honour saved promptSide ----
+      const saved = loadProgress(slug);
+      state.promptSide = (saved && saved.promptSide) ? saved.promptSide : 'jp';
+
+      const raw = parsePairs(textToSave);
+      if(raw.length===0){ alert('No pairs found'); return; }
+      state.cards = mapPairsToCards(raw, state.promptSide);
+
+      // Resume index/shown if present
+      if(saved && saved.progress){
+        const total = state.cards.length;
+        state.idx = Math.max(0, Math.min(saved.progress.idx|0, total-1));
+        state.shown = !!saved.progress.shown;
+        state.done = false;
+      } else {
+        state.idx = 0; state.shown = false; state.done = false;
+      }
+
+      // Write deck to file (always) so source of truth is the file
+      await writeFileText(slug, textToSave);
+
+      $('inputCard').style.display='none';$('sessionCard').style.display='block';$('actionBar').style.display='flex';
+      $('headerTitle').textContent=displayName;
+      updateHUD();
+      // refresh select from disk to ensure presence
+      await populateSetSelectFromDir(slug);
+    }
+
+    function updateHUD(){
+      const current=state.cards[state.idx];
+      $('progress').textContent=`${Math.min(state.idx+1,state.cards.length)} / ${state.cards.length}`;
+      $('promptArea').textContent=current?.q??'';
+      $('answerArea').textContent=current?.a??'';
+      $('answerArea').style.opacity=state.shown?'1':'0.35';
+      $('answerArea').style.filter=state.shown?'none':'blur(3px)';
+      $('goBtn').textContent=state.shown?'Next':'Go';
+      $('reverseBtn').textContent=state.promptSide==='jp'?'Reverse to EN→JP':'Reverse to JP→EN';
+    }
+
+    function saveProgress(){
+      if(!state.setSlug) return;
+      const obj = {
+        name: titleCase(state.setName||slugToNiceName(state.setSlug)),
+        progress: { idx: state.idx, shown: state.shown },
+        promptSide: state.promptSide,
+        ts: Date.now()
+      };
+      saveProgressObj(state.setSlug, obj);
+    }
+
+    function go(){
+      if(state.cards.length===0)return;
+      if(state.done){
+        state.idx=0;state.shown=false;state.done=false;updateHUD();saveProgress();return;
+      }
+      if(!state.shown){
+        state.shown=true;updateHUD();saveProgress();
+      } else {
+        state.idx++;
+        if(state.idx>=state.cards.length){
+          $('promptArea').textContent='Done!';$('answerArea').textContent='';
+          $('progress').textContent=`${state.cards.length} / ${state.cards.length}`;
+          state.idx=state.cards.length-1;state.done=true;$('goBtn').textContent='Restart';
+          saveProgress();
+        } else {
+          state.shown=false;updateHUD();saveProgress();
+        }
+      }
+    }
+
+    function stepBack(){
+      if(state.cards.length===0) return;
+      if(state.shown){
+        state.shown=false; state.done=false; updateHUD(); saveProgress(); return;
+      }
+      if(state.idx<=0) return;
+      state.idx--; state.shown=false; state.done=false; updateHUD(); saveProgress();
+    }
+
+    function reverseSides(){
+      state.promptSide=state.promptSide==='jp'?'en':'jp';
+      for(const c of state.cards){const t=c.q;c.q=c.a;c.a=t;}
+      state.shown=false;state.done=false;updateHUD();saveProgress();
+    }
+
+    function shuffleDeck(){
+      if(!state.cards.length) return;
+      for(let i=state.cards.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [state.cards[i],state.cards[j]]=[state.cards[j],state.cards[i]];
+      }
+      state.idx=0; state.shown=false; state.done=false;
+      updateHUD(); saveProgress();
+      showToast('Shuffled!');
+    }
+
+    async function back(){
+      $('sessionCard').style.display='none';$('actionBar').style.display='none';
+      $('inputCard').style.display='block';
+      $('pairs').value='';
+      $('headerTitle').textContent='Study Cards';
+      if(dirHandle){ $('setSelect').disabled=false; await populateSetSelectFromDir(''); }
+      else { $('setSelect').disabled=true; }
+      $('setSelect').value='';
+      state.setSlug=''; state.setName='';
+    }
+
+    function showToast(msg){
+      const t=$('toast');
+      t.textContent=msg;
+      t.classList.add('show');
+      clearTimeout(showToast._timer);
+      showToast._timer=setTimeout(()=>t.classList.remove('show'), 1600);
+    }
+
+    function sessionActive(){ return $('sessionCard').style.display!=='none'; }
+    document.addEventListener('keydown', (e)=>{
+      if(!sessionActive()) return;
+      const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+      if(tag==='input' || tag==='textarea' || document.activeElement.isContentEditable) return;
+
+      if(e.key==='ArrowRight'){ e.preventDefault(); go(); }
+      else if(e.key==='ArrowLeft'){ e.preventDefault(); stepBack(); }
+      else if(e.key==='r' || e.key==='R'){ e.preventDefault(); reverseSides(); }
+      else if(e.key==='s' || e.key==='S'){ e.preventDefault(); shuffleDeck(); }
+    });
+
+    $('startBtn').onclick=startSession;
+    $('goBtn').onclick=go;
+    $('backStepBtn').onclick=stepBack;
+    $('reverseBtn').onclick=reverseSides;
+    $('backBtnTop').onclick=back;
+    $('shuffleBtn').onclick=shuffleDeck;
+    $('chooseFolderBtn').onclick = chooseSentencesFolder;
+
+    // Load selected set into textarea
+    $('setSelect').onchange = async function(){
+      const slug=this.value;
+      if(!slug || !dirHandle){ return; }
+      try{
+        const fh = await dirHandle.getFileHandle(filenameFromSlug(slug));
+        let t = await readFileText(fh);
+        const name = titleCase(slugToNiceName(slug));
+        const first = (t.split(/\r?\n/)[0]||'');
+        if(/^\s*name:\s*/i.test(first)){
+          t = t.replace(/^\s*name:\s*.*$/i, `NAME: ${name}`);
+        } else if(!/^\s*NAME:\s*/.test(first)) {
+          t = `NAME: ${name}\n` + t;
+        } else {
+          t = t.replace(/^\s*NAME:\s*.*$/i, `NAME: ${name}`);
+        }
+        $('pairs').value=t;
+      }catch(err){
+        alert('Failed to read file. Did it move or get renamed?');
+        await populateSetSelectFromDir('');
+      }
+    };
+
+    // Delete selected set
+    $('deleteSetBtn').onclick = async function(){
+      const slug=$('setSelect').value;
+      if(!slug){ return; }
+      try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
+      showToast(`Cleared saved state for: ${slugToNiceName(slug)}`);
+    };
+
+    $('forgetFolderBtn').onclick = async function(){
+      try{ await idbDel('sentencesDir'); }catch{}
+      dirHandle = null;
+      $('setSelect').disabled = true;
+      $('setSelect').innerHTML = '<option value="">(none)</option>';
+      showToast('Forgot stored folder');
+    };
+
+    (async function init(){
+      $('setSelect').disabled = true;
+      try{
+        const h = await idbGet('sentencesDir');
+        if(h){
+          dirHandle = h;
+          const q = await dirHandle.queryPermission({ mode:'readwrite' });
+          if(q==='granted' || await dirHandle.requestPermission({ mode:'readwrite' })==='granted'){
+            $('setSelect').disabled = false;
+            await populateSetSelectFromDir();
+            showToast('Folder restored');
+          }
+        }
+      }catch(err){ /* ignore */ }
+    })();
+  </script>
+</body>
+</html>
