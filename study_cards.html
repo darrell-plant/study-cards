@@ -104,7 +104,7 @@ Thank you
 すみません
 Excuse me"></textarea><br>
 
-      <button id="startBtn">Start session</button>
+      <button id="startBtn" disabled>Start session</button>
     </div>
 
     <div id="sessionCard" class="card" style="display:none">
@@ -529,6 +529,7 @@ Excuse me"></textarea><br>
       if(dirHandle){ $('setSelect').disabled=false; await populateSetSelectFromDir(''); }
       else { $('setSelect').disabled=true; }
       $('setSelect').value='';
+      $('startBtn').disabled = true;
       state.setSlug=''; state.setName='';
     }
 
@@ -564,7 +565,12 @@ Excuse me"></textarea><br>
     // Load selected set into textarea
     $('setSelect').onchange = async function(){
       const slug=this.value;
-      if(!slug || !dirHandle){ return; }
+      if(!slug){
+        $('pairs').value='';           // clears and shows placeholder
+        $('startBtn').disabled = true; // no set selected
+        return;
+      }
+      if(!dirHandle){ return; }
       try{
         const fh = await dirHandle.getFileHandle(filenameFromSlug(slug));
         let t = await readFileText(fh);
@@ -578,9 +584,11 @@ Excuse me"></textarea><br>
           t = t.replace(/^\s*NAME:\s*.*$/i, `NAME: ${name}`);
         }
         $('pairs').value=t;
+        $('startBtn').disabled = false; // set selected -> allow start
       }catch(err){
         alert('Failed to read file. Did it move or get renamed?');
         await populateSetSelectFromDir('');
+        $('startBtn').disabled = true;
       }
     };
 
@@ -597,6 +605,7 @@ Excuse me"></textarea><br>
       dirHandle = null;
       $('setSelect').disabled = true;
       $('setSelect').innerHTML = '<option value="">(none)</option>';
+      $('startBtn').disabled = true;
       showToast('Forgot stored folder');
     };
 
