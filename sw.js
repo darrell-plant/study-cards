@@ -5,6 +5,7 @@ const CACHE = 'sc-v3';
 const ASSETS = [
   'study_cards.html',
   'manifest.webmanifest',
+  'library/index.json',
   'icon-192.png',
   'icon-512.png',
 ];

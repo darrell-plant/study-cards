@@ -84,6 +84,7 @@
           <option value="">(none)</option>
         </select>
         <button id="chooseFolderBtn" class="iconBtn" title="Choose/change sentences folder" aria-label="Choose or change sentences folder">📁</button>
+        <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
         <button id="forgetFolderBtn" class="iconBtn" title="Forget stored folder (you can re-pick)" aria-label="Forget stored folder">🧹</button>
         <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
       </div>
@@ -125,6 +126,11 @@
     // --- File System Access API (Chrome) ---
     let dirHandle = null;           // chosen /sentences directory
     const EXT = '.data';            // deck file extension
+
+    // Library sync configuration (repo-hosted files)
+    const LIB_INDEX_URL = 'library/index.json';   // GH Pages path to library manifest
+    const LIB_TARGET_SUBDIR = '';                // write library decks into the chosen folder root
+    const SYNC_POLICY = 'overwriteChanged';      // 'addNewOnly' | 'overwriteChanged' | 'forceOverwriteAll'
 
     function slugFromFilename(name){
       return name.replace(/\.[^.]+$/, '');
@@ -172,6 +178,28 @@
       await ws.close();
     }
 
+    // --- Network & file helpers for Library sync ---
+    async function fetchTextScoped(path){
+      const url = new URL(path, location.href).toString();
+      const res = await fetch(url, { cache: 'no-cache' });
+      if(!res.ok) throw new Error(`Fetch ${path} ${res.status}`);
+      return await res.text();
+    }
+    async function fetchJSONScoped(path){
+      return JSON.parse(await fetchTextScoped(path));
+    }
+    async function ensureSubdir(dirHandle, name){
+      return name ? await dirHandle.getDirectoryHandle(name, { create:true }) : dirHandle;
+    }
+    async function fileExists(dir, filename){
+      try { await dir.getFileHandle(filename); return true; }
+      catch { return false; }
+    }
+    async function readFileIfExists(dir, filename){
+      try { const fh = await dir.getFileHandle(filename); const f = await fh.getFile(); return await f.text(); }
+      catch { return null; }
+    }
+
     // --- IndexedDB for persisting FileSystemHandles ---
     const DB_NAME='sc_fs_db', STORE='handles';
     function idbOpen(){
@@ -211,6 +239,57 @@
     }
 
     async function populateSetSelectFromDir(selectedSlug=''){
+    // --- Sync Library (repo) into chosen folder ---
+    async function syncLibraryIntoFolder(){
+      if(!dirHandle){
+        const picked = await chooseSentencesFolder();
+        if(!dirHandle) return; // user cancelled
+      }
+      let index;
+      try {
+        index = await fetchJSONScoped(LIB_INDEX_URL);
+      } catch (e) {
+        showToast('Library index not available');
+        return;
+      }
+      const files = index.files || [];
+      if(!files.length){ showToast('Library is empty'); return; }
+
+      const targetDir = await ensureSubdir(dirHandle, LIB_TARGET_SUBDIR);
+      let wrote = 0, skipped = 0, errors = 0;
+
+      for(const item of files){
+        const rel = typeof item === 'string' ? item : (item.path || item.file || item.name);
+        if(!rel) continue;
+        try{
+          const name = rel.split('/').pop();
+          const libText = await fetchTextScoped('library/' + rel.replace(/^library\//,''));
+
+          if(SYNC_POLICY === 'addNewOnly'){
+            if(await fileExists(targetDir, name)){ skipped++; continue; }
+            const fh = await targetDir.getFileHandle(name, { create:true });
+            const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
+          }
+
+          if(SYNC_POLICY === 'overwriteChanged'){
+            const current = await readFileIfExists(targetDir, name);
+            if(current !== null && current === libText){ skipped++; continue; }
+            const fh = await targetDir.getFileHandle(name, { create:true });
+            const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
+          }
+
+          // 'forceOverwriteAll'
+          const fh = await targetDir.getFileHandle(name, { create:true });
+          const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++;
+        }catch(err){
+          console.warn('Sync fail', rel, err);
+          errors++;
+        }
+      }
+
+      await populateSetSelectFromDir();
+      showToast(`Library sync: ${wrote} wrote, ${skipped} skipped${errors?`, ${errors} errors`:''}`);
+    }
       const sel=$('setSelect');
       const current = sel.value;
       sel.innerHTML='<option value="">(none)</option>';
@@ -442,6 +521,7 @@
     $('backBtnTop').onclick=back;
     $('shuffleBtn').onclick=shuffleDeck;
     $('chooseFolderBtn').onclick = chooseSentencesFolder;
+    $('syncLibraryBtn').onclick = syncLibraryIntoFolder;
 
     // Load selected set into textarea
     $('setSelect').onchange = async function(){

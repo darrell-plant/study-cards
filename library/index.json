@@ -1,0 +1,10 @@
+{
+  "version": "2025-09-28T00:00:00Z",
+  "files": [
+    { "path": "chinese_1.data" },
+    { "path": "test_1.data" },
+    { "path": "test_2.data" },
+    { "path": "test.data" },
+    { "path": "wanikani_3.data" }
+  ]
+}
