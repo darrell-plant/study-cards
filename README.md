@@ -1,100 +1,82 @@
-# Nihongo Study Cards
+# Study Cards (Offline Web App)
 
-This folder contains two simple tools for practicing Japanese ↔ English sentence pairs.  
-Both follow the same data format:  
+**Study Cards** is a lightweight, offline-first flashcard web app designed for studying Japanese ↔ English sentence pairs (or any two-line Q/A pairs).  
+It runs entirely in the browser with no server or database, using the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API) for smooth local file handling.
 
+---
+
+## ✨ Features
+- **Offline ready**: Installable as a Progressive Web App (PWA) on desktop or Android Chrome.
+- **File-based decks**: Each set is a plain `.data` text file stored in a chosen `sentences/` folder.
+- **Two-line format**: Each pair is `JP line` + `EN line`, separated by newlines; blank lines separate pairs.
+- **Flexible start**: Paste raw pairs into the text box to create a new set on the fly.
+- **Progress tracking**: Session state (index, side shown, JP→EN or EN→JP) is saved in `localStorage`.
+- **Keyboard shortcuts** (desktop): → Go/reveal, ← Back, R Reverse, S Shuffle.
+- **Mobile friendly**: Thumb-sized buttons; works fullscreen when installed as a PWA.
+
+---
+
+## 📂 Folder structure
+- `study_cards.html` — the app itself (single-file).
+- `sentences/` — folder containing `.data` deck files.
+- `manifest.webmanifest` — PWA manifest.
+- `sw.js` — service worker for offline caching.
+
+---
+
+## 🚀 Usage
+
+### Desktop (Chrome/Edge)
+1. Open `study_cards.html` in your browser.
+2. Pick the `sentences/` folder (one-time).
+3. Choose a set from the dropdown or paste a new one.
+4. Use the toolbar buttons or keyboard shortcuts to study.
+
+### Android (Chrome)
+1. Visit the hosted app at `https://<your-username>.github.io/study-cards/`.
+2. In the Chrome menu (**⋮**), select **Install app** (or **Add to Home screen**).
+3. Launch the installed app; pick your `sentences/` folder once.
+4. Study offline thereafter; progress is saved locally.
+
+---
+
+## 📝 Deck file format
+Example `.data` file:
+
+```text
+NAME: Travel Phrases
+
+おはようございます
+Good morning
+
+すみません、道に迷いました
+Excuse me, I’m lost
+
+明日の電車は何時ですか
+What time is tomorrow’s train?
 ```
-NAME: Set Name (this header is optional; if omitted a new **Unnamed N** deck is created.)
 
-JP text
-EN text
-
-JP text
-EN text
-
-...
-```
-
-(one pair = Japanese line, English line, then one or more empty lines)
+- First line may optionally be `NAME: ...` (used for display).
+- Otherwise the filename slug is used.
 
 ---
 
-
-## `study-cards.html`
-
-# Study Cards — Offline Web App
-
-A tiny single-file SPA for quickly preparing and practising JP⇄EN line-pair “study cards”. Optimised for fast, offline use.
-
-## What’s in this build (v2.8)
-
-- **Named decks** with **case‑insensitive** canonical keys; display names are **Title‑Case** (e.g. `miXed CaSe` → **Mixed Case**).
-- **Natural‑sorted** deck selector (so “Unnamed 2” comes before “Unnamed 10”). “(none)” is always first.
-- **Delete** button (🗑) removes the selected deck.
-- **Japanese → English** is the default prompt side, with a **Reverse** toggle (or **R**).
-- **Go / Back** flow with **Back half‑step**: if an answer is visible, **Back** re‑blurs the answer instead of moving to the previous pair.
-- **Shuffle** button (or **S**) plus a tiny toast (“Shuffled!” / “Deleted set …”).
-- **Progress persistence** per deck (resume where you left off).
-- `NAME:` header is **case‑insensitive on input**, but always **saved/shown as uppercase** `NAME: …`.
-- **Unnamed decks** auto‑number from **Unnamed 1**, **Unnamed 2**, …
-- Accent **colour** updated to `#3dba50`.
-
-## Quick start
-
-1. Open the HTML file in your browser.
-2. Paste pairs using this format (one blank line between each pair):
-   ```
-   NAME: BJJ Grading Phrases
-   受け身は大丈夫ですか？
-   Are your breakfalls okay?
-
-   技の流れを確認しましょう。
-   Let’s check the sequence of the technique.
-   ```
-   - `NAME:` header is optional; if omitted a new **Unnamed N** deck is created.
-3. Press **Start session**.
-4. Use **Go** to reveal answers and advance; **Back** to re‑blur or step back; **Shuffle** to reshuffle the deck.
-
-## Keyboard shortcuts (during a session)
-
-- **→** Go
-- **←** Back (half‑step behaviour)
-- **R** Reverse prompt/answer sides
-- **S** Shuffle
-
-## Deck management
-
-- Use the **Saved sets** selector to load a deck (lists Title‑Case names in natural order).
-- Click **🗑** to delete the selected deck (no confirmation).
-- “Load new set” returns to the start page (does **not** delete anything).
-
-## Persistence & privacy
-
-- Decks and progress are stored in your browser’s **localStorage** (per device and browser profile).
-- Clearing site data or using a different browser/device will remove/lose decks.
-- No network requests; everything runs locally.
-
-## Notes for future tweaks (optional ideas)
-
-- Import/Export decks as JSON for backup.
-- Small “Resumed X / N” toast on session start.
-- Visible JP→EN / EN→JP indicator near the title.
+## 🛠 Development
+- Pure HTML/CSS/JS (no build system).
+- Uses modern browser APIs:
+  - File System Access API
+  - IndexedDB (to persist folder handle)
+  - localStorage (for progress only)
+- Service Worker caches static assets for offline use.
 
 ---
 
-**Built for quick rehearsal of everyday scenarios (BJJ grading, dentist chat, dog‑walk small talk, etc.)**
-
-
----
-
-## `study-cards.py`
-
-A **Python CLI app** that lets you paste in line pairs and step through them interactively at the terminal.  
-- Keyboard shortcuts for show/next, mark correct/wrong, and reshuffle.  
-- Good for quick desktop practice.  
-- Run with:  
-  ```bash
-  python3 study-cards.py < your-file.txt
-  ```
+## ⚠️ Limitations
+- Works best on **Chrome/Edge** (desktop + Android). Safari support is limited.
+- Folder access must be granted once; Android may sometimes prompt again.
+- This is a single-user, local-only app — no sync between devices.
 
 ---
+
+## 📄 License
+MIT License © 2025
