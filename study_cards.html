@@ -189,6 +189,32 @@ Excuse me"></textarea><br>
       await ws.close();
     }
 
+    // Attempt to restore access via user gesture; fall back to picking
+    async function ensureFolderAccessInteractive(){
+      try{
+        if(!dirHandle){
+          const h = await idbGet('sentencesDir');
+          if(h) dirHandle = h;
+        }
+        if(dirHandle){
+          let q = await dirHandle.queryPermission({ mode:'readwrite' });
+          if(q !== 'granted'){
+            // requestPermission must be called in a user gesture (button tap)
+            q = await dirHandle.requestPermission({ mode:'readwrite' });
+          }
+          if(q === 'granted'){
+            $('setSelect').disabled = false;
+            await populateSetSelectFromDir();
+            showToast('Folder reconnected');
+            return true;
+          }
+        }
+        // If we get here, either no handle or permission denied — pick anew
+        await chooseSentencesFolder();
+        return !!dirHandle;
+      }catch(err){ return false; }
+    }
+
     // --- Network & file helpers for Library sync ---
     async function fetchTextScoped(path){
       const url = new URL(path, location.href).toString();
@@ -532,7 +558,7 @@ Excuse me"></textarea><br>
     $('reverseBtn').onclick=reverseSides;
     $('backBtnTop').onclick=back;
     $('shuffleBtn').onclick=shuffleDeck;
-    $('chooseFolderBtn').onclick = chooseSentencesFolder;
+    $('chooseFolderBtn').onclick = ensureFolderAccessInteractive;
     $('syncLibraryBtn').onclick = syncLibraryIntoFolder;
 
     // Load selected set into textarea
@@ -581,10 +607,13 @@ Excuse me"></textarea><br>
         if(h){
           dirHandle = h;
           const q = await dirHandle.queryPermission({ mode:'readwrite' });
-          if(q==='granted' || await dirHandle.requestPermission({ mode:'readwrite' })==='granted'){
+          if(q==='granted'){
             $('setSelect').disabled = false;
             await populateSetSelectFromDir();
             showToast('Folder restored');
+          } else {
+            // On mobile, permission prompts often require a user gesture
+            showToast('Tap 📁 to reconnect folder');
           }
         }
       }catch(err){ /* ignore */ }
