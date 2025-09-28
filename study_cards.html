@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b0f14">
+  
   <title>Study Cards — Offline Web App</title>
   <!-- v2.8 — canonical slugs in storage; Title-Case display; registry migration -->
   <style>
@@ -498,8 +502,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-          .catch(err => console.error('SW registration failed:', err));
+        navigator.serviceWorker.register('sw.js').catch(console.error);
       });
     }
   </script>
