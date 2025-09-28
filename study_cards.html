@@ -496,22 +496,10 @@
   </script>
 
   <script>
-    // Register the service worker for offline support
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        // If study_cards.html and sw.js are in the same folder, this relative path is perfect
-        navigator.serviceWorker.register('sw.js').then(reg => {
-          // Optional: auto-update when a new SW is available
-          reg.addEventListener('updatefound', () => {
-            const newSW = reg.installing;
-            newSW?.addEventListener('statechange', () => {
-              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                // A new version is ready; you can notify the user or reload
-                console.log('Study Cards updated. Reload to use the latest version.');
-              }
-            });
-          });
-        }).catch(err => console.error('SW registration failed:', err));
+        navigator.serviceWorker.register('sw.js')
+          .catch(err => console.error('SW registration failed:', err));
       });
     }
   </script>
