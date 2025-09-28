@@ -41,7 +41,7 @@ It runs entirely in the browser with no server or database, using the [File Syst
 ---
 
 ## 📝 Deck file format
-Example `.data` file:
+Example `travel_phrases.data` file:
 
 ```text
 NAME: Travel Phrases
