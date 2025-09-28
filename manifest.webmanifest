@@ -2,7 +2,7 @@
   "id": "study-cards",
   "name": "Study Cards",
   "short_name": "Cards",
-  "start_url": "./",
+  "start_url": "study_cards.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0b0f14",
