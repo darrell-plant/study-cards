@@ -73,18 +73,20 @@
     <div id="inputCard" class="card">
       <p class="hint">Paste pairs in this exact format:<br>
         <strong>JP line</strong> ↵<br><strong>EN line</strong> ↵<br>
-        (one or more empty lines)<br>
-        Optional header: <code>NAME: My Set</code> on the first line<br>
-        If omitted, the set will be saved as <em>Unnamed 1</em> (auto-numbered).
+        (one or more empty lines)
       </p>
+
+      <div class="inline-group">
+        <span class="hint" aria-hidden="true">Manage Library:</span>
+        <button id="chooseFolderBtn" class="iconBtn" title="Choose/change sentences folder" aria-label="Choose or change sentences folder">📁</button>
+        <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
+      </div>
 
       <div class="inline-group">
         <label for="setSelect">Sets:</label>
         <select id="setSelect" disabled>
           <option value="">(none)</option>
         </select>
-        <button id="chooseFolderBtn" class="iconBtn" title="Choose/change sentences folder" aria-label="Choose or change sentences folder">📁</button>
-        <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
         <button id="forgetFolderBtn" class="iconBtn" title="Forget stored folder (you can re-pick)" aria-label="Forget stored folder">🧹</button>
         <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
       </div>
