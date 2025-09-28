@@ -1,12 +1,12 @@
 // sw.js
-const CACHE = 'sc-v2';
+const CACHE = 'sc-v3';
 
 // Put only files that truly exist next to sw.js (add icons if you have them)
 const ASSETS = [
   'study_cards.html',
   'manifest.webmanifest',
-  // 'icon-192.png',
-  // 'icon-512.png',
+  'icon-192.png',
+  'icon-512.png',
 ];
 
 function toScopedURL(path) {
