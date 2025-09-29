@@ -353,8 +353,12 @@ Excuse me"></textarea><br>
       const items = files.map(f=>{ const slug = slugFromFilename(f.name); return { slug, display: titleCase(slugToNiceName(slug)) }; });
       const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
       items.sort((a,b)=>coll.compare(a.display,b.display)||a.slug.localeCompare(b.slug));
-      for(const {slug,display} of items){
-        const opt=document.createElement('option'); opt.value=slug; opt.textContent=display; sel.appendChild(opt);
+      for (const {slug, display} of items){
+        const opt = document.createElement('option');
+        opt.value = slug;
+        opt.textContent = truncateString(display); // label shown to user
+        opt.title = display;                       // full name as tooltip
+        sel.appendChild(opt);
       }
       const toSet = selectedSlug || (items.some(i=>i.slug===current)? current : '');
       sel.value = toSet;
@@ -369,6 +373,11 @@ Excuse me"></textarea><br>
     }
     function titleCase(s){
       return s.toLowerCase().trim().split(/\s+/).map(w=>w? w[0].toUpperCase()+w.slice(1):'').join(' ');
+    }
+    // Truncate display string to avoid overflow
+    function truncateString(s, max=15){
+      s = String(s || '');
+      return s.length > max ? s.slice(0, max) + '...' : s;
     }
 
     const PREFIX = 'sc_progress:';
@@ -465,7 +474,8 @@ Excuse me"></textarea><br>
       await writeFileText(slug, textToSave);
 
       $('inputCard').style.display='none';$('sessionCard').style.display='block';$('actionBar').style.display='flex';
-      $('headerTitle').textContent=displayName;
+      $('headerTitle').textContent= truncateString(displayName);
+      $('headerTitle').title = displayName;
       updateHUD();
       // refresh select from disk to ensure presence
       await populateSetSelectFromDir(slug);
