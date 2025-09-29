@@ -54,6 +54,12 @@
     .hint{ color:#3dba5073; }
     select:disabled{ opacity:.55; filter:saturate(.6); }
 
+    /* Blocking busy overlay */
+    .modalBackdrop{position:fixed;inset:0;background:rgba(2,6,12,.72);display:none;align-items:center;justify-content:center;z-index:9999}
+    .modalBox{background:#0f1722;border:1px solid #334155;border-radius:14px;padding:1rem 1.2rem;color:#fefce8;box-shadow:0 10px 28px rgba(0,0,0,.45);min-width:240px;text-align:center}
+    .modalBox .spinner{display:inline-block;width:1em;height:1em;border:.18em solid #334155;border-top-color:#3fb950;border-radius:50%;animation:spin 1s linear infinite;margin-right:.5rem;vertical-align:-.14em}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
     /* Toast */
     .toast{
       position:fixed; left:50%; transform:translateX(-50%) translateY(6px);
@@ -72,6 +78,7 @@
 
     <div id="inputCard" class="card">
       <p class="hint">Use 📁 to select a folder to store sentence files.<br>
+        Use 🔌 to reconnect folder.<br>
         Grant permissions when prompted.<br>
         Use 🔄 to get the latest sentence files.
       </p>
@@ -130,6 +137,10 @@ Excuse me"></textarea><br>
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="busy" class="modalBackdrop" role="dialog" aria-live="polite" aria-modal="true">
+    <div class="modalBox"><span class="spinner" aria-hidden="true"></span><span id="busyMsg">Downloading…</span></div>
+  </div>
 
   <script>
     const $=id=>document.getElementById(id);
@@ -239,54 +250,60 @@ Excuse me"></textarea><br>
 
     // --- Sync Library (repo) into chosen folder ---
     async function syncLibraryIntoFolder(){
-      if(!dirHandle){
-        const picked = await chooseSentencesFolder();
-        if(!dirHandle) return; // user cancelled
-      }
-      let index;
-      try {
-        index = await fetchJSONScoped(LIB_INDEX_URL);
-      } catch (e) {
-        showToast('Library index not available');
-        return;
-      }
-      const files = index.files || [];
-      if(!files.length){ showToast('Library is empty'); return; }
-
-      const targetDir = await ensureSubdir(dirHandle, LIB_TARGET_SUBDIR);
-      let wrote = 0, skipped = 0, errors = 0;
-
-      for(const item of files){
-        const rel = typeof item === 'string' ? item : (item.path || item.file || item.name);
-        if(!rel) continue;
+        showBusy('Downloading sentences...');
+        showToast('Downloading sentences...');
         try{
-          const name = rel.split('/').pop();
-          const libText = await fetchTextScoped('library/' + rel.replace(/^library\//,''));
-
-          if(SYNC_POLICY === 'addNewOnly'){
-            if(await fileExists(targetDir, name)){ skipped++; continue; }
-            const fh = await targetDir.getFileHandle(name, { create:true });
-            const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
-          }
-
-          if(SYNC_POLICY === 'overwriteChanged'){
-            const current = await readFileIfExists(targetDir, name);
-            if(current !== null && current === libText){ skipped++; continue; }
-            const fh = await targetDir.getFileHandle(name, { create:true });
-            const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
-          }
-
-          // 'forceOverwriteAll'
-          const fh = await targetDir.getFileHandle(name, { create:true });
-          const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++;
-        }catch(err){
-          console.warn('Sync fail', rel, err);
-          errors++;
+          if(!dirHandle){
+          const picked = await chooseSentencesFolder();
+          if(!dirHandle) return; // user cancelled
         }
-      }
+        let index;
+        try {
+          index = await fetchJSONScoped(LIB_INDEX_URL);
+        } catch (e) {
+          showToast('Library index not available');
+          return;
+        }
+        const files = index.files || [];
+        if(!files.length){ showToast('Library is empty'); return; }
 
-      await populateSetSelectFromDir();
-      showToast(`Library sync: ${wrote} wrote, ${skipped} skipped${errors?`, ${errors} errors`:''}`);
+        const targetDir = await ensureSubdir(dirHandle, LIB_TARGET_SUBDIR);
+        let wrote = 0, skipped = 0, errors = 0;
+
+        for(const item of files){
+          const rel = typeof item === 'string' ? item : (item.path || item.file || item.name);
+          if(!rel) continue;
+          try{
+            const name = rel.split('/').pop();
+            const libText = await fetchTextScoped('library/' + rel.replace(/^library\//,''));
+
+            if(SYNC_POLICY === 'addNewOnly'){
+              if(await fileExists(targetDir, name)){ skipped++; continue; }
+              const fh = await targetDir.getFileHandle(name, { create:true });
+              const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
+            }
+
+            if(SYNC_POLICY === 'overwriteChanged'){
+              const current = await readFileIfExists(targetDir, name);
+              if(current !== null && current === libText){ skipped++; continue; }
+              const fh = await targetDir.getFileHandle(name, { create:true });
+              const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
+            }
+
+            // 'forceOverwriteAll'
+            const fh = await targetDir.getFileHandle(name, { create:true });
+            const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++;
+          }catch(err){
+            console.warn('Sync fail', rel, err);
+            errors++;
+          }
+        }
+
+        await populateSetSelectFromDir();
+        showToast(`Library sync: ${wrote} wrote, ${skipped} skipped${errors?`, ${errors} errors`:''}`);
+      } finally {
+        hideBusy();
+      }
     }
 
     // --- IndexedDB for persisting FileSystemHandles ---
@@ -540,6 +557,13 @@ Excuse me"></textarea><br>
       clearTimeout(showToast._timer);
       showToast._timer=setTimeout(()=>t.classList.remove('show'), 1600);
     }
+
+    function showBusy(msg){
+      const b=$('busy'); const m=$('busyMsg');
+      if(m) m.textContent = msg || 'Working…';
+      if(b) b.style.display='flex';
+    }
+    function hideBusy(){ const b=$('busy'); if(b) b.style.display='none'; }
 
     function sessionActive(){ return $('sessionCard').style.display!=='none'; }
     document.addEventListener('keydown', (e)=>{
