@@ -96,6 +96,7 @@
           <option value="">(none)</option>
         </select>
         <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
+        <button id="deleteFileBtn" class="iconBtn" title="Delete set file (destructive)" aria-label="Delete set file">💀</button>
       </div>
 
       <br>
@@ -623,6 +624,23 @@ Excuse me"></textarea><br>
       if(!slug){ return; }
       try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
       showToast(`Cleared saved state for: ${slugToNiceName(slug)}`);
+    };
+
+    // Delete the actual set file (destructive)
+    $('deleteFileBtn').onclick = async function(){
+      const slug = $('setSelect').value;
+      if(!slug || !dirHandle){ return; }
+      try{
+        await dirHandle.removeEntry(filenameFromSlug(slug));
+        try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
+        showToast(`Deleted file: ${slugToNiceName(slug)}`);
+        await populateSetSelectFromDir('');
+        $('setSelect').value='';
+        $('pairs').value='';
+        $('startBtn').disabled = true;
+      }catch(err){
+        alert('Failed to delete file. Permission denied or file missing.');
+      }
     };
 
 
