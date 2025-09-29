@@ -77,8 +77,9 @@
       </p>
 
       <div class="inline-group">
-        <span class="sectionLabel" aria-hidden="true">Manage Library:</span>
-        <button id="chooseFolderBtn" class="iconBtn" title="Choose/change sentences folder" aria-label="Choose or change sentences folder">📁</button>
+        <span class="sectionLabel" aria-hidden="true">Library:</span>
+        <button id="switchFolderBtn" class="iconBtn" title="Pick a different folder" aria-label="Pick a different folder">📁</button>
+        <button id="reconnectFolderBtn" class="iconBtn" title="Reconnect stored folder" aria-label="Reconnect stored folder">🔌</button>
         <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
       </div>
 
@@ -87,7 +88,6 @@
         <select id="setSelect" disabled>
           <option value="">(none)</option>
         </select>
-        <button id="forgetFolderBtn" class="iconBtn" title="Forget stored folder (you can re-pick)" aria-label="Forget stored folder">🧹</button>
         <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
       </div>
 
@@ -559,8 +559,9 @@ Excuse me"></textarea><br>
     $('reverseBtn').onclick=reverseSides;
     $('backBtnTop').onclick=back;
     $('shuffleBtn').onclick=shuffleDeck;
-    $('chooseFolderBtn').onclick = ensureFolderAccessInteractive;
-    $('syncLibraryBtn').onclick = syncLibraryIntoFolder;
+    $('switchFolderBtn').onclick = chooseSentencesFolder;          // always open picker
+    $('reconnectFolderBtn').onclick = ensureFolderAccessInteractive; // try stored handle
+    $('syncLibraryBtn').onclick = syncLibraryIntoFolder;            // refresh from library
 
     // Load selected set into textarea
     $('setSelect').onchange = async function(){
@@ -600,14 +601,6 @@ Excuse me"></textarea><br>
       showToast(`Cleared saved state for: ${slugToNiceName(slug)}`);
     };
 
-    $('forgetFolderBtn').onclick = async function(){
-      try{ await idbDel('sentencesDir'); }catch{}
-      dirHandle = null;
-      $('setSelect').disabled = true;
-      $('setSelect').innerHTML = '<option value="">(none)</option>';
-      $('startBtn').disabled = true;
-      showToast('Forgot stored folder');
-    };
 
     (async function init(){
       $('setSelect').disabled = true;
@@ -622,7 +615,7 @@ Excuse me"></textarea><br>
             showToast('Folder restored');
           } else {
             // On mobile, permission prompts often require a user gesture
-            showToast('Tap 📁 to reconnect folder');
+            showToast('Tap 🔌 to reconnect folder');
           }
         }
       }catch(err){ /* ignore */ }
