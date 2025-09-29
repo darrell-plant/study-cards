@@ -1,7 +1,7 @@
 {
   "id": "study-cards",
   "name": "Study Cards",
-  "short_name": "Cards",
+  "short_name": "Study Cards",
   "start_url": "study_cards.html",
   "scope": "./",
   "display": "standalone",
@@ -9,13 +9,13 @@
   "theme_color": "#0b0f14",
   "icons": [
     {
-      "src": "icon-192.v2.png",
+      "src": "icon-192.v3.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-512.v2.png",
+      "src": "icon-512.v3.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
