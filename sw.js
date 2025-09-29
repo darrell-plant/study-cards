@@ -6,8 +6,8 @@ const ASSETS = [
   'study_cards.html',
   'manifest.webmanifest',
   'library/index.json',
-  'icon-192.v3.png',
-  'icon-512.v3.png',
+  'assets/icon-192.v3.png',
+  'assets/icon-512.v3.png',
 ];
 
 function toScopedURL(path) {
