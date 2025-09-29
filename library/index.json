@@ -1,10 +1,14 @@
 {
-  "version": "2025-09-28T00:00:00Z",
+  "version": "2025-09-29T00:00:00Z",
   "files": [
+    { "path": "aiki_and_bjj_terms.data" },
+    { "path": "bjj_dojo.data" },
+    { "path": "chika_n3_examples.data" },
     { "path": "chinese_1.data" },
-    { "path": "test_1.data" },
-    { "path": "test_2.data" },
-    { "path": "test.data" },
-    { "path": "wanikani_3.data" }
+    { "path": "fasting.data" },
+    { "path": "max_and_stu.data" },
+    { "path": "miku_patterns.data" },
+    { "path": "table-tennis.data" },
+    { "path": "weight_and_height.data" }
   ]
 }
