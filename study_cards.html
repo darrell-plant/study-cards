@@ -524,6 +524,12 @@ Excuse me"></textarea><br>
       $('reverseBtn').textContent=state.promptSide==='jp'?'Reverse to EN→JP':'Reverse to JP→EN';
     }
 
+    function updateStartEnabled(){
+      const hasSet = $('setSelect').value !== '';
+      const hasText = $('pairs').value.trim().length > 0;
+      $('startBtn').disabled = !(hasSet || hasText);
+    }
+
     function saveProgress(){
       if(!state.setSlug) return;
       const obj = {
@@ -591,6 +597,7 @@ Excuse me"></textarea><br>
       $('setSelect').value='';
       $('startBtn').disabled = true;
       state.setSlug=''; state.setName='';
+      updateStartEnabled();
     }
 
     function showToast(msg){
@@ -619,6 +626,8 @@ Excuse me"></textarea><br>
       else if(e.key==='r' || e.key==='R'){ e.preventDefault(); reverseSides(); }
       else if(e.key==='s' || e.key==='S'){ e.preventDefault(); shuffleDeck(); }
     });
+    
+    $('pairs').addEventListener('input', updateStartEnabled);
 
     // highlight the japanese text to simplify opening in 
     // phone's Translation service
@@ -652,7 +661,7 @@ Excuse me"></textarea><br>
       const slug=this.value;
       if(!slug){
         $('pairs').value='';           // clears and shows placeholder
-        $('startBtn').disabled = true; // no set selected
+        updateStartEnabled();
         return;
       }
       if(!dirHandle){ return; }
@@ -669,11 +678,11 @@ Excuse me"></textarea><br>
           t = t.replace(/^\s*NAME:\s*.*$/i, `NAME: ${name}`);
         }
         $('pairs').value=t;
-        $('startBtn').disabled = false; // set selected -> allow start
+        updateStartEnabled();
       }catch(err){
         alert('Failed to read file. Did it move or get renamed?');
         await populateSetSelectFromDir('');
-        $('startBtn').disabled = true;
+        updateStartEnabled();
       }
     };
 
@@ -718,6 +727,7 @@ Excuse me"></textarea><br>
             // On mobile, permission prompts often require a user gesture
             showToast('Tap 🔌 to reconnect folder');
           }
+          updateStartEnabled();
         }
       }catch(err){ /* ignore */ }
     })();
