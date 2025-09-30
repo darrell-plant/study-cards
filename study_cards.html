@@ -84,6 +84,7 @@
         Use 🔄 to get the latest sentence files.
       </p>
 
+      <!-- Library controls -->
       <div class="inline-group">
         <span class="sectionLabel" aria-hidden="true">Library:</span>
         <button id="switchFolderBtn" class="iconBtn" title="Pick a different folder" aria-label="Pick a different folder">📁</button>
@@ -91,6 +92,7 @@
         <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
       </div>
 
+      <!-- Sets controls -->
       <div class="inline-group">
         <label for="setSelect">Sets:</label>
         <select id="setSelect" disabled>
@@ -201,6 +203,23 @@ Excuse me"></textarea><br>
       const ws = await fh.createWritable();
       await ws.write(text);
       await ws.close();
+    }
+
+    async function saveViaPickerFallback(filename, text){
+      if(!window.showSaveFilePicker) return false;
+      try{
+        const fh = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'Sentence data', accept: { 'text/plain': ['.data', '.txt'] } }]
+        });
+        const ws = await fh.createWritable();
+        await ws.write(text);
+        await ws.close();
+        showToast('Saved via picker');
+        return true;
+      }catch{
+        return false;
+      }
     }
 
     // Attempt to restore access via user gesture; fall back to picking
@@ -473,7 +492,18 @@ Excuse me"></textarea><br>
       }
 
       // Write deck to file (always) so source of truth is the file
-      await writeFileText(slug, textToSave);
+      let savedOk = false;
+      try{
+        await writeFileText(slug, textToSave);
+        savedOk = true;
+      }catch(err){
+        console.warn('writeFileText failed, trying Save As picker', err);
+        savedOk = await saveViaPickerFallback(filenameFromSlug(slug), textToSave);
+      }
+      if(!savedOk){
+        alert('Unable to create a new file in the selected folder on this device.\n\nTry:\n• Library → 📁 Switch folder (e.g., Downloads/StudyCards)\n• Or use “Save As” and then switch the app’s folder to where you saved it.');
+        return;
+      }
 
       $('inputCard').style.display='none';$('sessionCard').style.display='block';$('actionBar').style.display='flex';
       $('headerTitle').textContent= truncateString(displayName);
