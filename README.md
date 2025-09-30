@@ -9,7 +9,7 @@ An offline-first Progressive Web App (PWA) for practising Japanese–English sen
 - 🔄 **Sync library**: Download/update sets from the online `library/` hosted in this repo.
 - 🗑 **Delete state**: Clear saved progress for a set (localStorage only).
 - 💀 **Delete set**: Remove the actual `.data` file from the chosen folder.
-- 🔀 **Shuffle, Reverse, Back step** controls during practice.
+- 🔀 **Shuffle, Select, Reverse, Back step** controls during practice.
 - 📊 **Progress tracking**: Saves your place and which side (JP/EN) is prompt.
 
 ## 📝 Deck file format
@@ -17,6 +17,7 @@ Each set is a plain text file with extension `.data`:
 
 ```text
 NAME: Greetings
+
 こんにちは
 Hello
 
@@ -52,9 +53,9 @@ Excuse me
 - No build step required.
 
 ## 🚀 Installation
-- Open [GitHub Pages link](https://darrell-plant.github.io/study-cards/).
+- Open [GitHub Pages link](https://darrell-plant.github.io/study-cards/study_cards.html).
 - In Chrome desktop: **Install app** option appears in the address bar.
-- In Chrome Android: menu → *Install app*.
+- In Chrome Android: menu → *Open in Chrome Browser* -> *Add to home screen* -> *Install app*.
 
 ## 🎨 Icons
 - `icon-192.png` and `icon-512.png` generated with ImageMagick for PWA manifest.
