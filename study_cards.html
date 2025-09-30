@@ -590,7 +590,41 @@ Excuse me"></textarea><br>
       else if(e.key==='s' || e.key==='S'){ e.preventDefault(); shuffleDeck(); }
     });
 
-    function selectJapanese(){
+    // Replace your current selectJapanese() with this:
+    async function selectJapanese(){
+      if(!sessionActive()) return;
+      const el = state.promptSide==='jp' ? $('promptArea') : $('answerArea');
+      try{
+        // Center the panel and select all text
+        el.scrollIntoView({block:'center', inline:'nearest', behavior:'smooth'});
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        el.focus?.();
+
+        // Try to copy text so you don't need the long-press menu
+        const text = (el.textContent || '').trim();
+        let copied = false;
+        try{
+          if(navigator.clipboard && window.isSecureContext){
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          }
+        }catch{}
+        if(!copied){
+          try{ document.execCommand && document.execCommand('copy'); copied = true; }catch{}
+        }
+
+        // Subtle haptic hint on mobile
+        try{ navigator.vibrate && navigator.vibrate(12); }catch{}
+
+        showToast(copied ? 'Copied' : 'Selected');
+        el.click?.(); // harmless; some UIs like it
+      }catch(err){ /* ignore */ }
+    }
+    function selectJapaneseOld(){
       if(!sessionActive()) return;
       const el = state.promptSide==='jp' ? $('promptArea') : $('answerArea');
       try{
