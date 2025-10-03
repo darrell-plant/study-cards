@@ -17,6 +17,16 @@
     textarea{width:100%;min-height:200px;box-sizing:border-box;}
     button{margin:0.25rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#3dba50;cursor:pointer}
     button:hover{filter:brightness(1.08)}
+    /* Disabled buttons look clearly inactive */
+    button:disabled{
+      background:#111827;          /* darker gray */
+      color:#94a3b8;               /* muted text */
+      border-color:#263241;        /* dim border */
+      opacity:.65;
+      cursor:not-allowed;
+      filter:none;                 /* cancel hover brightening */
+    }
+    button:disabled:hover{ filter:none; }
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
     .card{border:1px solid #333;padding:1rem;margin:1rem;border-radius:12px;background:#121922;box-sizing:border-box}
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
@@ -155,7 +165,7 @@ Excuse me"></textarea><br>
     const EXT = '.data';            // deck file extension
 
     // Library sync configuration (repo-hosted files)
-    const LIB_INDEX_URL = 'library/index.json';   // GH Pages path to library manifest
+    const LIB_INDEX_URL = 'library/index.json';  // GH Pages path to library manifest
     const LIB_TARGET_SUBDIR = '';                // write library decks into the chosen folder root
     const SYNC_POLICY = 'overwriteChanged';      // 'addNewOnly' | 'overwriteChanged' | 'forceOverwriteAll'
 
@@ -616,6 +626,7 @@ Excuse me"></textarea><br>
     function hideBusy(){ const b=$('busy'); if(b) b.style.display='none'; }
 
     function sessionActive(){ return $('sessionCard').style.display!=='none'; }
+    
     document.addEventListener('keydown', (e)=>{
       if(!sessionActive()) return;
       const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
@@ -669,14 +680,7 @@ Excuse me"></textarea><br>
         const fh = await dirHandle.getFileHandle(filenameFromSlug(slug));
         let t = await readFileText(fh);
         const name = titleCase(slugToNiceName(slug));
-        const first = (t.split(/\r?\n/)[0]||'');
-        if(/^\s*name:\s*/i.test(first)){
-          t = t.replace(/^\s*name:\s*.*$/i, `NAME: ${name}`);
-        } else if(!/^\s*NAME:\s*/.test(first)) {
-          t = `NAME: ${name}\n` + t;
-        } else {
-          t = t.replace(/^\s*NAME:\s*.*$/i, `NAME: ${name}`);
-        }
+        t = normalizeDeckTop(t, name)
         $('pairs').value=t;
         updateStartEnabled();
       }catch(err){
@@ -685,6 +689,25 @@ Excuse me"></textarea><br>
         updateStartEnabled();
       }
     };
+
+function normalizeDeckTop(text, defaultName = "Example") {
+  // 1) strip all leading whitespace/newlines
+  text = text.replace(/^\s+/, "");
+
+  // 2) ensure NAME header exists (case-insensitive, tolerate weird spacing)
+  const m = text.match(/^(?:NAME\s*:\s*)([^\r\n]*)/im);
+  if (m) {
+    const name = m[1].trim();
+    text = text.replace(/^(?:NAME\s*:\s*)(.*)/im, `NAME: ${name}`);
+  } else {
+    text = `NAME: ${defaultName}\n\n` + text;
+  }
+
+  // 3) normalize to exactly ONE empty line after the header
+  text = text.replace(/^(NAME:.*?)(\r?\n\s*)+/, "$1\n\n");
+
+  return text;
+}
 
     // Delete selected set
     $('deleteSetBtn').onclick = async function(){
