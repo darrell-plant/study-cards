@@ -35,7 +35,7 @@ split_cards() {
         rest = tolower(rest)
 
         # 3) Reattach preserved numeric prefix exactly (keeps leading zeros)
-        return num rest
+        return num "_" rest
     }
 
     /^NAME:[[:space:]]*/ {
@@ -48,8 +48,6 @@ split_cards() {
 
       if (current_out != "") close(current_out)       # close previous file
       current_out = outfile
-
-      print "NAME: " title > current_out             # write header line
       next
     }
 
