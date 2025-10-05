@@ -397,10 +397,22 @@ Excuse me"></textarea><br>
 
     // Utils
     function slugify(name){
-      return name.toLowerCase()
-                 .replace(/[^\p{L}\p{N}\s_-]/gu,'')
-                 .trim()
-                 .replace(/\s+/g,'_');
+      name = String(name || '').trim();
+      // Preserve a leading numeric prefix with a dot, e.g. "01." or "007."
+      const m = name.match(/^\s*(\d+)\.\s*/);
+      let prefix = '';
+      if(m){
+        prefix = m[1] + '.';                // keep exact digits + dot
+        name = name.slice(m[0].length);     // remove prefix (incl. following spaces) from the remainder
+      }
+      // Slugify the remainder; allow dot characters; collapse spaces to underscores
+      const rest = name.toLowerCase()
+                       .replace(/[^\p{L}\p{N}\s._-]/gu,'')   // allow letters/numbers/space/._-
+                       .trim()
+                       .replace(/\s+/g,'_')
+                       .replace(/_+/g,'_')
+                       .replace(/^_+|_+$/g,'');
+      return prefix ? (rest ? `${prefix}_${rest}` : `${prefix}`) : rest;
     }
     function titleCase(s){
       return s.toLowerCase().trim().split(/\s+/).map(w=>w? w[0].toUpperCase()+w.slice(1):'').join(' ');
@@ -433,6 +445,16 @@ Excuse me"></textarea><br>
       return { name: titleCase(slug.replace(/_/g,' ')), slug };
     }
 
+    // Ensure slug is unique among existing files in the chosen folder
+    async function ensureUniqueSlug(base){
+      const files = await listDataFiles();
+      const have = new Set(files.map(f=>slugFromFilename(f.name)));
+      if(!have.has(base)) return base;
+      let i = 2, candidate = `${base}_${i}`;
+      while(have.has(candidate)){ i++; candidate = `${base}_${i}`; }
+      return candidate;
+    }
+
     // Parser ignores a first-line NAME header (case-insensitive)
     function parsePairs(text){
       const lines=text.split(/\r?\n/);
@@ -459,22 +481,44 @@ Excuse me"></textarea><br>
       const lines = userText.split(/\r?\n/);
       const m = (lines[0]||'').match(/^\s*name:\s*(.+)/i);
 
-      // Resolve display name (Title-Case) and slug (canonical)
+      // Resolve display name and slug.
+      // IMPORTANT: If user selected an existing set, preserve its slug EXACTLY ...
       let displayName, slug;
-      if(m){
-        displayName = titleCase(m[1].trim());
-        slug = slugify(displayName);
-        lines[0] = `NAME: ${displayName}`; // normalise header
-      }else{
-        // If user is loading an existing set via select, prefer that
-        const selectedSlug = $('setSelect').value;
-        if(selectedSlug){
-          slug = selectedSlug;
-          displayName = titleCase(slugToNiceName(slug));
-          lines.unshift(`NAME: ${displayName}`);
+      const selectedSlug = $('setSelect').value;
+
+      if (selectedSlug) {
+        // Existing file was chosen — default: keep its slug unchanged.
+        slug = selectedSlug;
+        const baselineDisplay = titleCase(slugToNiceName(selectedSlug)); // e.g., "01. Cause Reason"
+
+        if (m) {
+          // Normalize header text for consistent comparison/printing
+          displayName = titleCase(m[1].trim());
+          lines[0] = `NAME: ${displayName}`;
+
+          // Only clone to a new file if the user actually changed the NAME
+          // compared to what this slug normally displays as.
+          if (displayName !== baselineDisplay) {
+            const proposed = slugify(displayName);            // canonical base (may remove dot)
+            slug = await ensureUniqueSlug(proposed);          // ensure uniqueness when cloning
+          }
         } else {
+          // No header present — derive display name from slug and insert header.
+          displayName = baselineDisplay;
+          lines.unshift(`NAME: ${displayName}`);
+        }
+      } else {
+        // No existing file selected — new or pasted content
+        if (m) {
+          // Create a canonical slug from the provided name
+          displayName = titleCase(m[1].trim());
+          slug = slugify(displayName);
+          lines[0] = `NAME: ${displayName}`;
+        } else {
+          // Completely new unnamed set
           const nu = await nextUnnamed();
-          displayName = nu.name; slug = nu.slug;
+          displayName = nu.name;
+          slug = nu.slug;
           lines.unshift(`NAME: ${displayName}`);
         }
       }
