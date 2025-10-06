@@ -1,5 +1,5 @@
 {
-  "version": "2025-10-05T00:00:00Z",
+  "version": "2025-10-06T00:00:00Z",
   "files": [
     { "path": "01._cause_reason.data" },
     { "path": "02._persuasion_proposals_advice.data" },
@@ -25,6 +25,7 @@
     { "path": "bjj_dojo.data" },
     { "path": "chika_n3_examples.data" },
     { "path": "fasting.data" },
+    { "path": "fukui_road_trip.data" },
     { "path": "max_and_stu.data" },
     { "path": "miku_patterns.data" },
     { "path": "table-tennis.data" },
