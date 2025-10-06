@@ -81,6 +81,15 @@
       box-shadow:0 6px 20px rgba(0,0,0,.35);
     }
     .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* ===== Marquee mode ===== */
+    .marqueeWrap{display:flex;flex-direction:column;height:100vh;padding:1rem;box-sizing:border-box}
+    #marqueeViewport{flex:2;min-height:66vh;background:#0f1722;border:1px solid #243244;border-radius:12px;overflow:hidden;display:flex;align-items:center}
+    #marqueeText{white-space:nowrap;will-change:transform;display:inline-block;padding:0 2rem;font-weight:600;color:#facc15}
+    .marqueeControls{flex:1;display:flex;gap:.5rem;align-items:center;justify-content:center}
+    .ctrlBtn{font-size:1.15rem;padding:0.85rem 1.05rem;border-radius:14px;background:#1f2937;color:#fefce8;border:1px solid #334155}
+    .ctrlBtn.orange{background:#fb923c;color:#1f1205;border-color:#fdba74}
+
   </style>
 </head>
 <body>
@@ -126,14 +135,16 @@ Thank you
 Excuse me"></textarea><br>
 
       <button id="startBtn" disabled>Start session</button>
+      <button id="marqueeBtnStart" disabled>Marquee</button>
     </div>
 
     <div id="sessionCard" class="card" style="display:none">
       <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
         <div id="progress"></div>
         <div>
-          <button id="reverseBtn" class="aux" title="Flip JP↔EN for this session">Reverse JP↔EN</button>
-          <button id="backBtnTop" class="aux">Load new set</button>
+          <button id="reverseBtn" class="aux" title="Flip JP↔EN for this session">EN→JP</button>
+          <button id="backBtnTop" class="aux">Load new</button>
+          <button id="shuffleTopBtn" class="aux">Shuffle</button>
         </div>
       </div>
 
@@ -142,10 +153,26 @@ Excuse me"></textarea><br>
         <div id="answerArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
       </div>
     </div>
+
+    <div id="marqueeCard" class="card" style="display:none; padding:0;">
+      <div class="marqueeWrap">
+        <div id="marqueeViewport">
+          <div id="marqueeText" style="font-size:72px;"></div>
+        </div>
+        <div class="marqueeControls">
+          <button id="fontDownBtn" class="ctrlBtn">A−</button>
+          <button id="fontUpBtn" class="ctrlBtn">A+</button>
+          <button id="speedDownBtn" class="ctrlBtn">⬇️</button>
+          <button id="speedUpBtn" class="ctrlBtn">⬆️</button>
+          <button id="exitMarqueeBtn" class="ctrlBtn orange">Exit</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <div class="bar" id="actionBar" style="display:none">
-    <button id="shuffleBtn" class="shuffle">Shuffle</button>
+    <button id="marqueeBtnSession" class="shuffle">Marquee</button>
     <button id="selectBtn" class="select">Select</button>
     <button id="backStepBtn" class="back">Back</button>
     <button id="goBtn" class="go">Go</button>
@@ -395,6 +422,163 @@ Excuse me"></textarea><br>
       sel.value = toSet;
     }
 
+    // ===== Marquee mode state =====
+    const MARQUEE_FONT_KEY = 'sc_marquee_font';
+    const MARQUEE_SPEED_KEY = 'sc_marquee_speed'; // px per second
+
+    const marquee = {
+      lines: [],
+      idx: 0,
+      running: false,
+      caller: 'start', // 'start' or 'session'
+      fontPx: Math.max(24, +(localStorage.getItem(MARQUEE_FONT_KEY)||72)),
+      pxPerSec: Math.max(20, +(localStorage.getItem(MARQUEE_SPEED_KEY)||80)),
+      currentRAF: null
+    };
+
+    function setMarqueeFont(px){
+      marquee.fontPx = Math.max(24, Math.min(200, px|0));
+      localStorage.setItem(MARQUEE_FONT_KEY, marquee.fontPx);
+      $('marqueeText').style.fontSize = marquee.fontPx + 'px';
+    }
+
+    function setMarqueeSpeed(pxPerSec){
+      marquee.pxPerSec = Math.max(20, Math.min(600, pxPerSec|0));
+      localStorage.setItem(MARQUEE_SPEED_KEY, marquee.pxPerSec);
+    }
+
+    function restartMarqueeWithNewSpeed(){
+      if(!marquee.running) return;
+      const el = $('marqueeText');
+      const vp = $('marqueeViewport');
+      let tx = 0;
+      const tr = getComputedStyle(el).transform;
+      if(tr && tr !== 'none'){
+        const m = tr.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,([^,]+),([^\)]+)\)/);
+        if(m){ tx = parseFloat(m[1]) || 0; }
+      }
+      const textWidth = el.scrollWidth;
+      if(!isFinite(tx) || tx === 0){ tx = vp.clientWidth; }
+      el.style.transition = 'none';
+      el.style.transform = `translateX(${tx}px)`;
+      void el.offsetWidth;
+      const remaining = Math.abs(tx - (-textWidth));
+      const durationSec = remaining / marquee.pxPerSec;
+      el.style.transition = `transform ${durationSec}s linear`;
+      el.style.transform = `translateX(${-textWidth}px)`;
+    }
+
+    function showMarqueeScreen(){
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='none';
+      $('actionBar').style.display='none';
+      $('marqueeCard').style.display='block';
+      // Initialize font each time shown (in case user changed settings)
+      setMarqueeFont(marquee.fontPx);
+    }
+
+    function hideMarqueeScreen(){
+      $('marqueeCard').style.display='none';
+      // restore previous caller screen
+      if(marquee.caller === 'session'){
+        $('sessionCard').style.display='block';
+        $('actionBar').style.display='flex';
+      } else {
+        $('inputCard').style.display='block';
+      }
+    }
+
+    // Render and animate one line; when finished, advance to next
+    function playMarqueeLine(text, onDone){
+      const vp = $('marqueeViewport');
+      const el = $('marqueeText');
+      el.textContent = text;
+
+      // Reset transform/transition
+      el.style.transition = 'none';
+      // Put text just outside the right edge
+      const startX = vp.clientWidth;
+      el.style.transform = `translateX(${startX}px)`;
+
+      // Force layout
+      void el.offsetWidth;
+
+      const textWidth = el.scrollWidth;
+      const distance = startX + textWidth; // from right outside to fully left off-screen
+      const durationSec = distance / marquee.pxPerSec;
+
+      // Animate to the left
+      el.style.transition = `transform ${durationSec}s linear`;
+      el.style.transform = `translateX(${-textWidth}px)`;
+
+      // When animation ends, call onDone
+      const handler = () => {
+        el.removeEventListener('transitionend', handler);
+        onDone && onDone();
+      };
+      el.addEventListener('transitionend', handler);
+    }
+
+    function startMarqueeLoop(){
+      marquee.running = true;
+      const next = () => {
+        if(!marquee.running || !marquee.lines.length) return;
+        const t = marquee.lines[marquee.idx % marquee.lines.length];
+        marquee.idx++;
+        playMarqueeLine(t, () => requestAnimationFrame(next));
+      };
+      requestAnimationFrame(next);
+    }
+
+    function stopMarqueeLoop(){
+      marquee.running = false;
+      // Stop any current transition cleanly
+      const el = $('marqueeText');
+      el.style.transition = 'none';
+    }
+
+    // Build JP list for a slug (reads file, parses pairs)
+    async function getJPListForSlug(slug){
+      if(!dirHandle) return [];
+      try{
+        const fh = await dirHandle.getFileHandle(filenameFromSlug(slug));
+        const t = await readFileText(fh);
+        const pairs = parsePairs(t);
+        return pairs.map(p=>p[0]).filter(Boolean);
+      }catch{
+        return [];
+      }
+    }
+
+    async function startMarqueeFromSelected(){
+      const slug = $('setSelect').value;
+      if(!slug) return;
+      marquee.caller = 'start';
+      marquee.lines = await getJPListForSlug(slug);
+      marquee.idx = 0;
+      if(!marquee.lines.length){ showToast('No JP lines'); return; }
+      showMarqueeScreen();
+      startMarqueeLoop();
+    }
+
+    function startMarqueeFromSession(){
+      if(!state.cards.length) return;
+      marquee.caller = 'session';
+
+      // We only want the JP string of the current card.
+      // We can recover JP by checking promptSide:
+      // If promptSide==='jp': current.q is JP
+      // If promptSide==='en': current.a is JP
+      const cur = state.cards[state.idx];
+      const jp = (state.promptSide==='jp') ? cur.q : cur.a;
+      marquee.lines = [jp].filter(Boolean);
+      marquee.idx = 0;
+
+      if(!marquee.lines.length){ showToast('No JP text'); return; }
+      showMarqueeScreen();
+      startMarqueeLoop();
+    }
+
     // Utils
     function slugify(name){
       name = String(name || '').trim();
@@ -575,13 +759,15 @@ Excuse me"></textarea><br>
       $('answerArea').style.opacity=state.shown?'1':'0.35';
       $('answerArea').style.filter=state.shown?'none':'blur(3px)';
       $('goBtn').textContent=state.shown?'Next':'Go';
-      $('reverseBtn').textContent=state.promptSide==='jp'?'Reverse to EN→JP':'Reverse to JP→EN';
+      $('reverseBtn').textContent=state.promptSide==='jp'?'EN→JP':'JP→EN';
     }
 
     function updateStartEnabled(){
       const hasSet = $('setSelect').value !== '';
       const hasText = $('pairs').value.trim().length > 0;
       $('startBtn').disabled = !(hasSet || hasText);
+      // Marquee-from-start requires a selected set
+      $('marqueeBtnStart').disabled = !hasSet;
     }
 
     function saveProgress(){
@@ -705,11 +891,22 @@ Excuse me"></textarea><br>
     $('backStepBtn').onclick=stepBack;
     $('reverseBtn').onclick=reverseSides;
     $('backBtnTop').onclick=back;
-    $('shuffleBtn').onclick=shuffleDeck;
+    $('shuffleTopBtn').onclick = shuffleDeck;
     $('selectBtn').onclick = selectJapanese;
     $('switchFolderBtn').onclick = chooseSentencesFolder;          // always open picker
     $('reconnectFolderBtn').onclick = ensureFolderAccessInteractive; // try stored handle
     $('syncLibraryBtn').onclick = syncLibraryIntoFolder;            // refresh from library
+    $('marqueeBtnStart').onclick = startMarqueeFromSelected;
+    $('marqueeBtnSession').onclick = startMarqueeFromSession;
+    $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); hideMarqueeScreen(); };
+    $('fontUpBtn').onclick = () => setMarqueeFont(marquee.fontPx + 4);
+    $('fontDownBtn').onclick = () => setMarqueeFont(marquee.fontPx - 4);
+    $('speedUpBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec + 20); restartMarqueeWithNewSpeed(); };
+    $('speedDownBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec - 20); restartMarqueeWithNewSpeed(); };
+
+    // Initialize stored values (in case user never opened Marquee yet)
+    setMarqueeFont(marquee.fontPx);
+    setMarqueeSpeed(marquee.pxPerSec);
 
     // Load selected set into textarea
     $('setSelect').onchange = async function(){
@@ -808,4 +1005,3 @@ function normalizeDeckTop(text, defaultName = "Example") {
     }
   </script>
 </body>
-</html>
