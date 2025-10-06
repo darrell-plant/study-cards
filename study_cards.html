@@ -436,6 +436,26 @@ Excuse me"></textarea><br>
       currentRAF: null
     };
 
+    // --- Wake Lock (keep screen on during Marquee) ---
+    let wakeLock = null;
+    async function acquireWakeLock(){
+      if(!('wakeLock' in navigator)) return; // not supported
+      try{
+        if(!wakeLock){
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener?.('release',()=>{ wakeLock = null; });
+        }
+      }catch(err){ /* ignore (e.g., tab not visible) */ }
+    }
+    function releaseWakeLock(){
+      try{ wakeLock && wakeLock.release && wakeLock.release(); }catch{}
+      wakeLock = null;
+    }
+    // Re-acquire on visibility gain (Android may auto-release on background)
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible' && marquee.running){ acquireWakeLock(); }
+    });
+
     function setMarqueeFont(px){
       marquee.fontPx = Math.max(24, Math.min(200, px|0));
       localStorage.setItem(MARQUEE_FONT_KEY, marquee.fontPx);
@@ -475,9 +495,11 @@ Excuse me"></textarea><br>
       $('marqueeCard').style.display='block';
       // Initialize font each time shown (in case user changed settings)
       setMarqueeFont(marquee.fontPx);
+      acquireWakeLock();
     }
 
     function hideMarqueeScreen(){
+      releaseWakeLock();
       $('marqueeCard').style.display='none';
       // restore previous caller screen
       if(marquee.caller === 'session'){
@@ -898,7 +920,7 @@ Excuse me"></textarea><br>
     $('syncLibraryBtn').onclick = syncLibraryIntoFolder;            // refresh from library
     $('marqueeBtnStart').onclick = startMarqueeFromSelected;
     $('marqueeBtnSession').onclick = startMarqueeFromSession;
-    $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); hideMarqueeScreen(); };
+    $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); releaseWakeLock(); hideMarqueeScreen(); };
     $('fontUpBtn').onclick = () => setMarqueeFont(marquee.fontPx + 4);
     $('fontDownBtn').onclick = () => setMarqueeFont(marquee.fontPx - 4);
     $('speedUpBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec + 20); restartMarqueeWithNewSpeed(); };
