@@ -7,8 +7,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0b0f14">
   
-  <title>Study Cards — Offline Web App</title>
-  <!-- v2.8 — canonical slugs in storage; Title-Case display; registry migration -->
+  <title>Study Cards</title>
   <style>
     :root{ --bar-h: 76px; }
     body{font-family:sans-serif;background:#0b0f14;color:#3dba50;margin:0}
@@ -35,7 +34,7 @@
     .viewerBox .viewerPanel{
       height:28vh;min-height:28vh;max-height:28vh;
       background:#0f1722;border:1px solid #243244;border-radius:12px;
-      padding:12px;font-size:1.2rem;line-height:1.6;width:100%;box-sizing:border-box;
+      padding:12px;font-size:2.0rem;line-height:1.6;width:100%;box-sizing:border-box;
       white-space:pre-wrap;user-select:text;overflow:auto;
     }
     #promptArea{color:#a3e635;}
@@ -47,11 +46,11 @@
       padding-bottom:calc(0.6rem + env(safe-area-inset-bottom, 0px));
       background:linear-gradient(180deg,rgba(11,15,20,.0) 0%,#0b0f14 12%,#0b0f14 100%);
       border-top:1px solid #1f2a36;box-sizing:border-box}
-    .bar .go{font-size:1.15rem;padding:0.9rem 1.3rem;border-radius:16px;background:#3fb950;color:#06200c;border:1px solid #46c35f;min-width:85px;text-align:center}
+    .bar .go{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#3fb950;color:#06200c;border:1px solid #46c35f;min-width:85px;text-align:center}
     .bar .back{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#38bdf8;color:#042635;border:1px solid #7dd3fc}
-    .bar .shuffle{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#facc15;color:#1f1300;border:1px solid #fde68a}
+    .bar .scroll{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#facc15;color:#1f1300;border:1px solid #fde68a}
     .bar .select{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#fb923c;color:#1f1205;border:1px solid #fdba74}
-    .bar .go:active,.bar .back:active,.bar .shuffle:active{transform:translateY(1px)}
+    .bar .go:active,.bar .back:active,.bar .scroll:active{transform:translateY(1px)}
     .bar .aux{background:#1f2937}
 
     h1{margin:1rem}
@@ -88,8 +87,7 @@
     #marqueeText{white-space:nowrap;will-change:transform;display:inline-block;padding:0 2rem;font-weight:600;color:#facc15}
     .marqueeControls{flex:1;display:flex;gap:.5rem;align-items:center;justify-content:center}
     .ctrlBtn{font-size:1.15rem;padding:0.85rem 1.05rem;border-radius:14px;background:#1f2937;color:#fefce8;border:1px solid #334155}
-    .ctrlBtn.orange{background:#fb923c;color:#1f1205;border-color:#fdba74}
-
+    .ctrlBtn.scroll{background:#facc15;color:#1f1300;border:1px solid #fde68a}
   </style>
 </head>
 <body>
@@ -135,7 +133,7 @@ Thank you
 Excuse me"></textarea><br>
 
       <button id="startBtn" disabled>Start session</button>
-      <button id="marqueeBtnStart" disabled>Marquee</button>
+      <button id="marqueeBtnStart" disabled>Scroll</button>
     </div>
 
     <div id="sessionCard" class="card" style="display:none">
@@ -164,7 +162,7 @@ Excuse me"></textarea><br>
           <button id="fontUpBtn" class="ctrlBtn">A+</button>
           <button id="speedDownBtn" class="ctrlBtn">⬇️</button>
           <button id="speedUpBtn" class="ctrlBtn">⬆️</button>
-          <button id="exitMarqueeBtn" class="ctrlBtn orange">Exit</button>
+          <button id="exitMarqueeBtn" class="ctrlBtn scroll">Exit</button>
         </div>
       </div>
     </div>
@@ -172,7 +170,7 @@ Excuse me"></textarea><br>
   </div>
 
   <div class="bar" id="actionBar" style="display:none">
-    <button id="marqueeBtnSession" class="shuffle">Marquee</button>
+    <button id="marqueeBtnSession" class="scroll">Scroll</button>
     <button id="selectBtn" class="select">Select</button>
     <button id="backStepBtn" class="back">Back</button>
     <button id="goBtn" class="go">Go</button>
