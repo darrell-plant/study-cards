@@ -1,5 +1,5 @@
 {
-  "version": "2025-10-06T00:00:00Z",
+  "version": "2025-10-07T00:00:00Z",
   "files": [
     { "path": "01._cause_reason.data" },
     { "path": "02._persuasion_proposals_advice.data" },
@@ -28,7 +28,7 @@
     { "path": "fukui_road_trip.data" },
     { "path": "max_and_stu.data" },
     { "path": "miku_patterns.data" },
-    { "path": "table-tennis.data" },
+    { "path": "table_tennis.data" },
     { "path": "weight_and_height.data" }
   ]
 }
