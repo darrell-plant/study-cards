@@ -92,6 +92,11 @@
     .marqueeControls{flex:1;display:flex;gap:.5rem;align-items:center;justify-content:center}
     .ctrlBtn{font-size:1.15rem;padding:0.85rem 1.05rem;border-radius:14px;background:#1f2937;color:#fefce8;border:1px solid #334155}
     .ctrlBtn.scroll{background:#facc15;color:#1f1300;border:1px solid #fde68a}
+
+    /* Marquee fullscreen overlay */
+    #marqueeCard.fullscreen{ position:fixed; inset:0; margin:0; border-radius:0; padding:0; z-index:1000; }
+    /* Keep control buttons inside and wrap on small screens */
+    .marqueeControls{ flex-wrap:wrap; padding:0 1rem 1rem; box-sizing:border-box }
   </style>
 </head>
 <body>
@@ -500,10 +505,17 @@ Excuse me"></textarea><br>
       setMarqueeFont(marquee.fontPx);
       acquireWakeLock();
       document.body.classList.remove('hasBar'); // marquee has its own controls, no fixed bar
+      // Make marquee full-screen and hide header/scroll
+      $('marqueeCard').classList.add('fullscreen');
+      $('headerTitle').style.display = 'none';
+      document.body.style.overflow = 'hidden';
     }
 
     function hideMarqueeScreen(){
       releaseWakeLock();
+      $('marqueeCard').classList.remove('fullscreen');
+      $('headerTitle').style.display = '';
+      document.body.style.overflow = '';
       $('marqueeCard').style.display='none';
       // restore previous caller screen
       if (marquee.caller === 'session') {
