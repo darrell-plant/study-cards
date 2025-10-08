@@ -33,7 +33,16 @@
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
     .card{border:1px solid #333;padding:1rem;margin:1rem;border-radius:12px;background:#121922;box-sizing:border-box}
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-
+    /* Top controls (session header) */
+    .topBtn{
+      margin: 0.15rem;
+      padding: 0.6rem 1.0rem;
+      border-radius: 12px;
+      border: 2px solid #f3a404a3;
+      background: #1f2937;
+      color: #facc15;
+      cursor: pointer;
+    }
     .viewerBox{display:grid;gap:10px}
     .viewerBox .viewerPanel{
       height:28vh;min-height:28vh;max-height:28vh;
@@ -148,9 +157,10 @@ Excuse me"></textarea><br>
       <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
         <div id="progress"></div>
         <div>
-          <button id="reverseBtn" class="aux" title="Flip JP↔EN for this session">EN→JP</button>
-          <button id="backBtnTop" class="aux">Load new</button>
-          <button id="shuffleTopBtn" class="aux">Shuffle</button>
+          <button id="reverseBtn" class="topBtn" title="Flip JP↔EN for this session">EN→JP</button>
+          <button id="backBtnTop" class="topBtn">New</button>
+          <button id="shuffleTopBtn" class="topBtn">Mix</button>
+          <button id="timerBtn" class="topBtn" title="Auto reveal/advance">0s</button>
         </div>
       </div>
 
@@ -535,6 +545,7 @@ Excuse me"></textarea><br>
     }
 
     function showMarqueeScreen(){
+      cancelCardTimers();
       $('inputCard').style.display='none';
       $('sessionCard').style.display='none';
       $('actionBar').style.display='none';
@@ -743,6 +754,36 @@ Excuse me"></textarea><br>
       applyViewFont();
     }
 
+    // ===== Study Card Timer =====
+    const TIMER_OPTIONS = [0,10,20,30,60];
+    let timerIdx = parseInt(localStorage.getItem('sc_timer_idx') || '0', 10);
+    if(!(timerIdx>=0 && timerIdx<TIMER_OPTIONS.length)) timerIdx = 0;
+    function timerSeconds(){ return TIMER_OPTIONS[timerIdx]; }
+    function updateTimerLabel(){ const b=$('timerBtn'); if(b) b.textContent = `${timerSeconds()}s`; }
+    function cycleTimer(){
+      timerIdx = (timerIdx+1) % TIMER_OPTIONS.length;
+      localStorage.setItem('sc_timer_idx', String(timerIdx));
+      updateTimerLabel();
+      cancelCardTimers();
+      if(sessionActive()) scheduleCardTimer();
+    }
+
+    let revealTO=null, nextTO=null;
+    function cancelCardTimers(){
+      if(revealTO){ clearTimeout(revealTO); revealTO=null; }
+      if(nextTO){ clearTimeout(nextTO); nextTO=null; }
+    }
+    function scheduleCardTimer(){
+      cancelCardTimers();
+      const secs = timerSeconds(); if(!secs) return; // 0s: disabled
+      const ms = secs*1000;
+      if(!state.shown){ // waiting to reveal answer
+        revealTO = setTimeout(()=>{ if(sessionActive()) go(); }, ms);
+      } else { // answer visible -> move next
+        nextTO = setTimeout(()=>{ if(sessionActive()) go(); }, ms);
+      }
+    }
+
     function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
 
     async function startSession(){
@@ -835,6 +876,8 @@ Excuse me"></textarea><br>
       $('actionBar').style.display='flex';
       document.body.classList.add('hasBar');
       updateHUD();
+      updateTimerLabel();
+      scheduleCardTimer();
       // refresh select from disk to ensure presence
       await populateSetSelectFromDir(slug);
     }
@@ -848,6 +891,7 @@ Excuse me"></textarea><br>
       $('answerArea').style.filter=state.shown?'none':'blur(3px)';
       $('goBtn').textContent=state.shown?'Next':'Go';
       $('reverseBtn').textContent=state.promptSide==='jp'?'EN→JP':'JP→EN';
+      scheduleCardTimer();
     }
 
     function updateStartEnabled(){
@@ -916,6 +960,7 @@ Excuse me"></textarea><br>
     }
 
     async function back(){
+      cancelCardTimers();
       $('sessionCard').style.display='none';
       $('actionBar').style.display='none';
       document.body.classList.remove('hasBar');
@@ -976,12 +1021,12 @@ Excuse me"></textarea><br>
     }
 
     $('startBtn').onclick=startSession;
-    $('goBtn').onclick=go;
-    $('backStepBtn').onclick=stepBack;
-    $('reverseBtn').onclick=reverseSides;
+    $('goBtn').onclick=()=>{ cancelCardTimers(); go(); };
+    $('backStepBtn').onclick=()=>{ cancelCardTimers(); stepBack(); };
+    $('reverseBtn').onclick=()=>{ cancelCardTimers(); reverseSides(); };
+    $('shuffleTopBtn').onclick = ()=>{ cancelCardTimers(); shuffleDeck(); scheduleCardTimer(); };
+    $('selectBtn').onclick = ()=>{ cancelCardTimers(); selectJapanese(); };
     $('backBtnTop').onclick=back;
-    $('shuffleTopBtn').onclick = shuffleDeck;
-    $('selectBtn').onclick = selectJapanese;
     $('switchFolderBtn').onclick = chooseSentencesFolder;          // always open picker
     $('reconnectFolderBtn').onclick = ensureFolderAccessInteractive; // try stored handle
     $('syncLibraryBtn').onclick = syncLibraryIntoFolder;            // refresh from library
@@ -992,6 +1037,8 @@ Excuse me"></textarea><br>
     $('fontDownBtn').onclick = () => setMarqueeFont(marquee.fontPx - 4);
     $('speedUpBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec + 20); restartMarqueeWithNewSpeed(); };
     $('speedDownBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec - 20); restartMarqueeWithNewSpeed(); };
+    $('timerBtn').onclick = cycleTimer;
+    updateTimerLabel();
     // Marquee navigation and A/B loop controls
     $('prevLineBtn').onclick = ()=>{ if(!marquee.lines.length) return; stopMarqueeLoop(); marquee.running = true; showLineAt(prevIndex()); };
     $('nextLineBtn').onclick = ()=>{ if(!marquee.lines.length) return; stopMarqueeLoop(); marquee.running = true; showLineAt(nextIndex()); };
