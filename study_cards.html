@@ -179,6 +179,9 @@ Excuse me"></textarea><br>
           <button id="fontUpBtn" class="ctrlBtn">A+</button>
           <button id="speedDownBtn" class="ctrlBtn">⬇️</button>
           <button id="speedUpBtn" class="ctrlBtn">⬆️</button>
+          <button id="prevLineBtn" class="ctrlBtn" title="Previous">◀</button>
+          <button id="nextLineBtn" class="ctrlBtn" title="Next">▶</button>
+          <button id="abLoopBtn" class="ctrlBtn" title="Set A / Set B / Loop / Reset">a</button>
           <button id="exitMarqueeBtn" class="ctrlBtn scroll">Exit</button>
         </div>
       </div>
@@ -436,12 +439,13 @@ Excuse me"></textarea><br>
 
     const marquee = {
       lines: [],
-      idx: 0,
+      cursor: 0,        // current index being shown
       running: false,
-      caller: 'start', // 'start' or 'session'
+      caller: 'start',  // 'start' or 'session'
       fontPx: Math.max(24, +(localStorage.getItem(MARQUEE_FONT_KEY)||72)),
       pxPerSec: Math.max(20, +(localStorage.getItem(MARQUEE_SPEED_KEY)||80)),
-      currentRAF: null
+      currentRAF: null,
+      loop: { a: null, b: null, enabled: false, stage: 0 } // stage: 0->set A, 1->set B, 2->enable loop, 3->reset
     };
 
     // --- Wake Lock (keep screen on during Marquee) ---
@@ -496,6 +500,41 @@ Excuse me"></textarea><br>
       el.style.transform = `translateX(${-textWidth}px)`;
     }
 
+    // ==== Marquee helpers for looping and navigation ====
+    function marqueeHasMultiple(){ return marquee.lines && marquee.lines.length > 1; }
+    function currentIndex(){ return marquee.cursor % marquee.lines.length; }
+    function inRange(i,a,b){ return a<=b ? (i>=a && i<=b) : (i>=a || i<=b); }
+    function normalizeRange(){
+      if(marquee.loop.a==null || marquee.loop.b==null) return;
+      if(marquee.loop.a===marquee.loop.b) return; // single-item loop ok
+      if(marquee.loop.a > marquee.loop.b){ const t = marquee.loop.a; marquee.loop.a = marquee.loop.b; marquee.loop.b = t; }
+    }
+    function nextIndex(){
+      const n = marquee.lines.length; if(!n) return 0;
+      if(marquee.loop.enabled && marquee.loop.a!=null && marquee.loop.b!=null){
+        const a = marquee.loop.a % n, b = marquee.loop.b % n;
+        if(a<=b){ return (marquee.cursor < b) ? marquee.cursor+1 : a; }
+        // wrapped range (rare, but handle): a..n-1 then 0..b
+        return ((marquee.cursor>=a && marquee.cursor < n-1) || marquee.cursor < b) ? (marquee.cursor+1)%n : a;
+      }
+      return (marquee.cursor + 1) % n;
+    }
+    function prevIndex(){
+      const n = marquee.lines.length; if(!n) return 0;
+      if(marquee.loop.enabled && marquee.loop.a!=null && marquee.loop.b!=null){
+        const a = marquee.loop.a % n, b = marquee.loop.b % n;
+        if(a<=b){ return (marquee.cursor > a) ? marquee.cursor-1 : b; }
+        // wrapped range
+        return ((marquee.cursor<=b && marquee.cursor>0) || marquee.cursor > a) ? (marquee.cursor-1+n)%n : b;
+      }
+      return (marquee.cursor - 1 + n) % n;
+    }
+
+    function updateABButtonLabel(){
+      const st = marquee.loop.stage % 4;
+      $('abLoopBtn').textContent = ['a','b','L','r'][st];
+    }
+
     function showMarqueeScreen(){
       $('inputCard').style.display='none';
       $('sessionCard').style.display='none';
@@ -528,46 +567,37 @@ Excuse me"></textarea><br>
       }
     }
 
-    // Render and animate one line; when finished, advance to next
+    // ==== Refactored Marquee play logic ====
     function playMarqueeLine(text, onDone){
       const vp = $('marqueeViewport');
       const el = $('marqueeText');
       el.textContent = text;
-
-      // Reset transform/transition
       el.style.transition = 'none';
-      // Put text just outside the right edge
       const startX = vp.clientWidth;
       el.style.transform = `translateX(${startX}px)`;
-
-      // Force layout
       void el.offsetWidth;
-
       const textWidth = el.scrollWidth;
-      const distance = startX + textWidth; // from right outside to fully left off-screen
+      const distance = startX + textWidth;
       const durationSec = distance / marquee.pxPerSec;
-
-      // Animate to the left
       el.style.transition = `transform ${durationSec}s linear`;
       el.style.transform = `translateX(${-textWidth}px)`;
-
-      // When animation ends, call onDone
-      const handler = () => {
-        el.removeEventListener('transitionend', handler);
-        onDone && onDone();
-      };
+      const handler = () => { el.removeEventListener('transitionend', handler); onDone && onDone(); };
       el.addEventListener('transitionend', handler);
+    }
+
+    function showLineAt(i){
+      if(!marquee.lines.length) return;
+      marquee.cursor = (i+marquee.lines.length) % marquee.lines.length;
+      playMarqueeLine(marquee.lines[marquee.cursor], ()=>{
+        if(!marquee.running) return;
+        showLineAt(nextIndex());
+      });
     }
 
     function startMarqueeLoop(){
       marquee.running = true;
-      const next = () => {
-        if(!marquee.running || !marquee.lines.length) return;
-        const t = marquee.lines[marquee.idx % marquee.lines.length];
-        marquee.idx++;
-        playMarqueeLine(t, () => requestAnimationFrame(next));
-      };
-      requestAnimationFrame(next);
+      updateABButtonLabel();
+      showLineAt(marquee.cursor || 0);
     }
 
     function stopMarqueeLoop(){
@@ -595,8 +625,13 @@ Excuse me"></textarea><br>
       if(!slug) return;
       marquee.caller = 'start';
       marquee.lines = await getJPListForSlug(slug);
-      marquee.idx = 0;
+      marquee.cursor = 0;
       if(!marquee.lines.length){ showToast('No JP lines'); return; }
+      // Show/hide nav controls based on number of lines
+      const multi = marqueeHasMultiple();
+      ['prevLineBtn','nextLineBtn','abLoopBtn'].forEach(id=>$(id).style.display = multi ? '' : 'none');
+      marquee.loop = { a:null, b:null, enabled:false, stage:0 };
+      updateABButtonLabel();
       showMarqueeScreen();
       startMarqueeLoop();
     }
@@ -612,9 +647,12 @@ Excuse me"></textarea><br>
       const cur = state.cards[state.idx];
       const jp = (state.promptSide==='jp') ? cur.q : cur.a;
       marquee.lines = [jp].filter(Boolean);
-      marquee.idx = 0;
-
+      marquee.cursor = 0;
       if(!marquee.lines.length){ showToast('No JP text'); return; }
+      const multi = marqueeHasMultiple();
+      ['prevLineBtn','nextLineBtn','abLoopBtn'].forEach(id=>$(id).style.display = multi ? '' : 'none');
+      marquee.loop = { a:null, b:null, enabled:false, stage:0 };
+      updateABButtonLabel();
       showMarqueeScreen();
       startMarqueeLoop();
     }
@@ -960,6 +998,19 @@ Excuse me"></textarea><br>
     $('fontDownBtn').onclick = () => setMarqueeFont(marquee.fontPx - 4);
     $('speedUpBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec + 20); restartMarqueeWithNewSpeed(); };
     $('speedDownBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec - 20); restartMarqueeWithNewSpeed(); };
+    // Marquee navigation and A/B loop controls
+    $('prevLineBtn').onclick = ()=>{ if(!marquee.lines.length) return; stopMarqueeLoop(); marquee.running = true; showLineAt(prevIndex()); };
+    $('nextLineBtn').onclick = ()=>{ if(!marquee.lines.length) return; stopMarqueeLoop(); marquee.running = true; showLineAt(nextIndex()); };
+    $('abLoopBtn').onclick = ()=>{
+      if(!marqueeHasMultiple()) return;
+      const st = marquee.loop.stage % 4;
+      const cur = currentIndex();
+      if(st===0){ marquee.loop.a = cur; marquee.loop.stage=1; showToast('A set'); }
+      else if(st===1){ marquee.loop.b = cur; marquee.loop.stage=2; showToast('B set'); }
+      else if(st===2){ normalizeRange(); marquee.loop.enabled = true; marquee.loop.stage=3; showToast('Loop A–B'); }
+      else { marquee.loop = { a:null, b:null, enabled:false, stage:0 }; showToast('Loop reset'); }
+      updateABButtonLabel();
+    };
     // Tap panels to adjust font: Prompt = bigger, Answer = smaller
     $('promptArea').addEventListener('click', ()=>{ bumpViewFont(0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
     $('answerArea').addEventListener('click', ()=>{ bumpViewFont(-0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
