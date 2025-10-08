@@ -11,7 +11,11 @@
   <style>
     :root{ --bar-h: 76px; }
     body{font-family:sans-serif;background:#0b0f14;color:#3dba50;margin:0}
-    .wrap{padding:1rem; padding-bottom:calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));}
+    
+    .wrap{ padding:1rem; }
+    .hasBar .wrap{
+      padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));
+    }
 
     textarea{width:100%;min-height:200px;box-sizing:border-box;}
     button{margin:0.25rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#facc15;cursor:pointer}
@@ -150,6 +154,14 @@ Excuse me"></textarea><br>
         <div id="promptArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
         <div id="answerArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
       </div>
+
+      <div class="bar" id="actionBar" style="display:none">
+        <button id="marqueeBtnSession" class="scroll">Scroll</button>
+        <button id="selectBtn" class="select">Select</button>
+        <button id="backStepBtn" class="back">Back</button>
+        <button id="goBtn" class="go">Go</button>
+      </div>
+
     </div>
 
     <div id="marqueeCard" class="card" style="display:none; padding:0;">
@@ -167,13 +179,6 @@ Excuse me"></textarea><br>
       </div>
     </div>
 
-  </div>
-
-  <div class="bar" id="actionBar" style="display:none">
-    <button id="marqueeBtnSession" class="scroll">Scroll</button>
-    <button id="selectBtn" class="select">Select</button>
-    <button id="backStepBtn" class="back">Back</button>
-    <button id="goBtn" class="go">Go</button>
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -494,17 +499,20 @@ Excuse me"></textarea><br>
       // Initialize font each time shown (in case user changed settings)
       setMarqueeFont(marquee.fontPx);
       acquireWakeLock();
+      document.body.classList.remove('hasBar'); // marquee has its own controls, no fixed bar
     }
 
     function hideMarqueeScreen(){
       releaseWakeLock();
       $('marqueeCard').style.display='none';
       // restore previous caller screen
-      if(marquee.caller === 'session'){
+      if (marquee.caller === 'session') {
         $('sessionCard').style.display='block';
         $('actionBar').style.display='flex';
+        document.body.classList.add('hasBar');
       } else {
         $('inputCard').style.display='block';
+        document.body.classList.remove('hasBar');
       }
     }
 
@@ -763,7 +771,10 @@ Excuse me"></textarea><br>
         return;
       }
 
-      $('inputCard').style.display='none';$('sessionCard').style.display='block';$('actionBar').style.display='flex';
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='block';
+      $('actionBar').style.display='flex';
+      document.body.classList.add('hasBar');
       $('headerTitle').textContent= truncateString(displayName);
       $('headerTitle').title = displayName;
       updateHUD();
@@ -848,7 +859,9 @@ Excuse me"></textarea><br>
     }
 
     async function back(){
-      $('sessionCard').style.display='none';$('actionBar').style.display='none';
+      $('sessionCard').style.display='none';
+      $('actionBar').style.display='none';
+      document.body.classList.remove('hasBar');
       $('inputCard').style.display='block';
       $('pairs').value='';
       $('headerTitle').textContent='Study Cards';
@@ -951,24 +964,24 @@ Excuse me"></textarea><br>
       }
     };
 
-function normalizeDeckTop(text, defaultName = "Example") {
-  // 1) strip all leading whitespace/newlines
-  text = text.replace(/^\s+/, "");
+    function normalizeDeckTop(text, defaultName = "Example") {
+      // 1) strip all leading whitespace/newlines
+      text = text.replace(/^\s+/, "");
 
-  // 2) ensure NAME header exists (case-insensitive, tolerate weird spacing)
-  const m = text.match(/^(?:NAME\s*:\s*)([^\r\n]*)/im);
-  if (m) {
-    const name = m[1].trim();
-    text = text.replace(/^(?:NAME\s*:\s*)(.*)/im, `NAME: ${name}`);
-  } else {
-    text = `NAME: ${defaultName}\n\n` + text;
-  }
+      // 2) ensure NAME header exists (case-insensitive, tolerate weird spacing)
+      const m = text.match(/^(?:NAME\s*:\s*)([^\r\n]*)/im);
+      if (m) {
+        const name = m[1].trim();
+        text = text.replace(/^(?:NAME\s*:\s*)(.*)/im, `NAME: ${name}`);
+      } else {
+        text = `NAME: ${defaultName}\n\n` + text;
+      }
 
-  // 3) normalize to exactly ONE empty line after the header
-  text = text.replace(/^(NAME:.*?)(\r?\n\s*)+/, "$1\n\n");
+      // 3) normalize to exactly ONE empty line after the header
+      text = text.replace(/^(NAME:.*?)(\r?\n\s*)+/, "$1\n\n");
 
-  return text;
-}
+      return text;
+    }
 
     // Delete selected set
     $('deleteSetBtn').onclick = async function(){
