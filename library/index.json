@@ -1,6 +1,7 @@
 {
-  "version": "2025-10-07T00:00:00Z",
+  "version": "2025-10-08T00:00:00Z",
   "files": [
+    { "path": "000_test.data" },
     { "path": "01._cause_reason.data" },
     { "path": "02._persuasion_proposals_advice.data" },
     { "path": "03._means_mediation.data" },
