@@ -695,6 +695,18 @@ Excuse me"></textarea><br>
     }
 
     const state={cards:[],idx:0,shown:false,promptSide:'jp',done:false,setName:'',setSlug:''};
+    // Viewer font sizing (applies to both panels, persists)
+    const VIEW_FONT_KEY = 'sc_view_font_rem';
+    let viewFontRem = parseFloat(localStorage.getItem(VIEW_FONT_KEY) || '2.0');
+    function applyViewFont(){
+      const v = Math.max(1.0, Math.min(4.0, viewFontRem));
+      ['promptArea','answerArea'].forEach(id=> $(id).style.fontSize = v + 'rem');
+    }
+    function bumpViewFont(delta){
+      viewFontRem = Math.max(1.0, Math.min(4.0, +(viewFontRem + delta).toFixed(2)));
+      localStorage.setItem(VIEW_FONT_KEY, String(viewFontRem));
+      applyViewFont();
+    }
 
     function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
 
@@ -948,6 +960,9 @@ Excuse me"></textarea><br>
     $('fontDownBtn').onclick = () => setMarqueeFont(marquee.fontPx - 4);
     $('speedUpBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec + 20); restartMarqueeWithNewSpeed(); };
     $('speedDownBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec - 20); restartMarqueeWithNewSpeed(); };
+    // Tap panels to adjust font: Prompt = bigger, Answer = smaller
+    $('promptArea').addEventListener('click', ()=>{ bumpViewFont(0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
+    $('answerArea').addEventListener('click', ()=>{ bumpViewFont(-0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
 
     // Initialize stored values (in case user never opened Marquee yet)
     setMarqueeFont(marquee.fontPx);
@@ -1039,6 +1054,7 @@ Excuse me"></textarea><br>
           updateStartEnabled();
         }
       }catch(err){ /* ignore */ }
+      applyViewFont();
     })();
   </script>
 
