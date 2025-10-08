@@ -101,9 +101,8 @@
 </head>
 <body>
   <div class="wrap">
-    <h1 id="headerTitle">Study Cards</h1>
-
     <div id="inputCard" class="card">
+      <h1 id="headerTitle">Study Cards</h1>
       <p class="hint">Use 📁 to select a folder to store sentence files.<br>
         Use 🔌 to reconnect folder.<br>
         Grant permissions when prompted.<br>
@@ -546,14 +545,12 @@ Excuse me"></textarea><br>
       document.body.classList.remove('hasBar'); // marquee has its own controls, no fixed bar
       // Make marquee full-screen and hide header/scroll
       $('marqueeCard').classList.add('fullscreen');
-      $('headerTitle').style.display = 'none';
       document.body.style.overflow = 'hidden';
     }
 
     function hideMarqueeScreen(){
       releaseWakeLock();
       $('marqueeCard').classList.remove('fullscreen');
-      $('headerTitle').style.display = '';
       document.body.style.overflow = '';
       $('marqueeCard').style.display='none';
       // restore previous caller screen
@@ -837,8 +834,6 @@ Excuse me"></textarea><br>
       $('sessionCard').style.display='block';
       $('actionBar').style.display='flex';
       document.body.classList.add('hasBar');
-      $('headerTitle').textContent= truncateString(displayName);
-      $('headerTitle').title = displayName;
       updateHUD();
       // refresh select from disk to ensure presence
       await populateSetSelectFromDir(slug);
@@ -926,7 +921,6 @@ Excuse me"></textarea><br>
       document.body.classList.remove('hasBar');
       $('inputCard').style.display='block';
       $('pairs').value='';
-      $('headerTitle').textContent='Study Cards';
       if(dirHandle){ $('setSelect').disabled=false; await populateSetSelectFromDir(''); }
       else { $('setSelect').disabled=true; }
       $('setSelect').value='';
