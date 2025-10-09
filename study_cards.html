@@ -60,6 +60,19 @@
         height:38vh;min-height:38vh;max-height:38vh;
       }
     }
+    /* Single-panel mode (large font) */
+    .viewerBox.single .viewerPanel{ display:none; }
+    .viewerBox.single.showPrompt #promptArea{ display:block; }
+    .viewerBox.single.showAnswer #answerArea{ display:block; }
+    /* Size the single panel to roughly the combined height of two panels */
+    .viewerBox.single .viewerPanel{
+      height:52vh; min-height:52vh; max-height:52vh;
+    }
+    @media (orientation: portrait){
+      .viewerBox.single .viewerPanel{
+        height:76vh; min-height:76vh; max-height:76vh;
+      }
+    }
     #promptArea{color:#a3e635;}
     #answerArea{color:#facc15;}
 
@@ -791,11 +804,20 @@ Excuse me"></textarea><br>
     function applyViewFont(){
       const v = Math.max(1.0, Math.min(4.0, viewFontRem));
       ['promptArea','answerArea'].forEach(id=> $(id).style.fontSize = v + 'rem');
+      updateViewerLayout();
     }
     function bumpViewFont(delta){
       viewFontRem = Math.max(1.0, Math.min(4.0, +(viewFontRem + delta).toFixed(2)));
       localStorage.setItem(VIEW_FONT_KEY, String(viewFontRem));
       applyViewFont();
+    }
+    function updateViewerLayout(){
+      const vb = document.querySelector('.viewerBox');
+      if(!vb) return;
+      const single = viewFontRem >= 2.0;
+      vb.classList.toggle('single', single);
+      vb.classList.toggle('showPrompt', single && !state.shown);
+      vb.classList.toggle('showAnswer', single && state.shown);
     }
 
     // ===== Study Card Timer =====
@@ -964,6 +986,7 @@ Excuse me"></textarea><br>
       $('goBtn').textContent=state.shown?'Next':'Go';
       $('reverseBtn').textContent=state.promptSide==='jp'?'EN':'JP';
       scheduleCardTimer();
+      updateViewerLayout();
     }
 
     function updateStartEnabled(){
@@ -1230,6 +1253,7 @@ Excuse me"></textarea><br>
         }
       }catch(err){ /* ignore */ }
       applyViewFont();
+      updateViewerLayout();
     })();
   </script>
 
