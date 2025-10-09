@@ -31,7 +31,7 @@
     }
     button:disabled:hover{ filter:none; }
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
-    .card{border:1px solid #333;padding:1rem;margin:1rem;border-radius:12px;background:#121922;box-sizing:border-box}
+    .card{border:1px solid #333;padding:1rem;margin:0rem;border-radius:12px;background:#121922;box-sizing:border-box}
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
     /* Top controls (session header) */
     .topBtn{
@@ -47,10 +47,15 @@
     }
     .viewerBox{display:grid;gap:10px}
     .viewerBox .viewerPanel{
-      height:28vh;min-height:28vh;max-height:28vh;
+      height:26vh;min-height:26vh;max-height:26vh;
       background:#0f1722;border:1px solid #243244;border-radius:12px;
       padding:12px;font-size:2.0rem;line-height:1.6;width:100%;box-sizing:border-box;
       white-space:pre-wrap;user-select:text;overflow:auto;
+    }
+    @media (orientation: portrait){
+      .viewerBox .viewerPanel{
+        height:36vh;min-height:36vh;max-height:36vh;
+      }
     }
     #promptArea{color:#a3e635;}
     #answerArea{color:#facc15;}
@@ -935,8 +940,8 @@ Excuse me"></textarea><br>
       $('progress').textContent=`${Math.min(state.idx+1,state.cards.length)} / ${state.cards.length}`;
       $('promptArea').textContent=current?.q??'';
       $('answerArea').textContent=current?.a??'';
-      $('answerArea').style.opacity=state.shown?'1':'0.35';
-      $('answerArea').style.filter=state.shown?'none':'blur(3px)';
+      $('answerArea').style.opacity=state.shown?'1':'0.45';
+      $('answerArea').style.filter=state.shown?'none':'blur(5px)';
       $('goBtn').textContent=state.shown?'Next':'Go';
       $('reverseBtn').textContent=state.promptSide==='jp'?'EN→JP':'JP→EN';
       scheduleCardTimer();
