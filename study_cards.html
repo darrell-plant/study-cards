@@ -35,16 +35,19 @@
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
     /* Top controls (session header) */
     .topBtn{
-      margin: 0.15rem;
+      margin: 0.10rem;
       padding: 0.6rem 1.0rem;
       border-radius: 12px;
       border: 2px solid #f3a404a3;
       background: #1f2937;
       color: #facc15;
       cursor: pointer;
-      min-width:58px;
       text-align:center;
     }
+    #timerBtn.topBtn {
+      min-width:58px;
+    }
+
     .viewerBox{display:grid;gap:10px}
     .viewerBox .viewerPanel{
       height:26vh;min-height:26vh;max-height:26vh;
@@ -54,7 +57,7 @@
     }
     @media (orientation: portrait){
       .viewerBox .viewerPanel{
-        height:36vh;min-height:36vh;max-height:36vh;
+        height:38vh;min-height:38vh;max-height:38vh;
       }
     }
     #promptArea{color:#a3e635;}
@@ -180,7 +183,7 @@ Excuse me"></textarea><br>
       <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
         <div id="progress"></div>
         <div>
-          <button id="reverseBtn" class="topBtn" title="Flip JP↔EN for this session">EN→JP</button>
+          <button id="reverseBtn" class="topBtn" title="Flip JP↔EN for this session">EN</button>
           <button id="backBtnTop" class="topBtn">New</button>
           <button id="shuffleTopBtn" class="topBtn">Mix</button>
           <button id="timerBtn" class="topBtn" title="Auto reveal/advance">0s</button>
@@ -213,7 +216,7 @@ Excuse me"></textarea><br>
           <button id="speedUpBtn" class="ctrlBtn">⬆️</button>
           <button id="prevLineBtn" class="ctrlBtn" title="Previous">◀</button>
           <button id="nextLineBtn" class="ctrlBtn" title="Next">▶</button>
-          <button id="abLoopBtn" class="ctrlBtn" title="Set A / Set B / Loop / Reset">a</button>
+          <button id="abLoopBtn" class="ctrlBtn" title="Set A / Set B / Reset">a</button>
           <button id="exitMarqueeBtn" class="ctrlBtn scroll">Exit</button>
         </div>
       </div>
@@ -477,6 +480,7 @@ Excuse me"></textarea><br>
       fontPx: Math.max(24, +(localStorage.getItem(MARQUEE_FONT_KEY)||72)),
       pxPerSec: Math.max(20, +(localStorage.getItem(MARQUEE_SPEED_KEY)||80)),
       currentRAF: null,
+      animToken: 0,
       loop: { a: null, b: null, enabled: false, stage: 0 } // stage: 0->set A, 1->set B, 2->enable loop, 3->reset
     };
 
@@ -537,36 +541,46 @@ Excuse me"></textarea><br>
     // ==== Marquee helpers for looping and navigation ====
     function marqueeHasMultiple(){ return marquee.lines && marquee.lines.length > 1; }
     function currentIndex(){ return marquee.cursor % marquee.lines.length; }
-    function inRange(i,a,b){ return a<=b ? (i>=a && i<=b) : (i>=a || i<=b); }
     function normalizeRange(){
       if(marquee.loop.a==null || marquee.loop.b==null) return;
       if(marquee.loop.a===marquee.loop.b) return; // single-item loop ok
       if(marquee.loop.a > marquee.loop.b){ const t = marquee.loop.a; marquee.loop.a = marquee.loop.b; marquee.loop.b = t; }
     }
+
+    function hasLoop(){ return !!(marquee.loop.enabled && marquee.loop.a!=null && marquee.loop.b!=null); }
+
     function nextIndex(){
       const n = marquee.lines.length; if(!n) return 0;
-      if(marquee.loop.enabled && marquee.loop.a!=null && marquee.loop.b!=null){
-        const a = marquee.loop.a % n, b = marquee.loop.b % n;
-        if(a<=b){ return (marquee.cursor < b) ? marquee.cursor+1 : a; }
-        // wrapped range (rare, but handle): a..n-1 then 0..b
-        return ((marquee.cursor>=a && marquee.cursor < n-1) || marquee.cursor < b) ? (marquee.cursor+1)%n : a;
+      if(hasLoop()){
+        const a = marquee.loop.a % n, b = marquee.loop.b % n; // normalizeRange() ensures a<=b
+        return (marquee.cursor === b) ? a : (marquee.cursor + 1) % n;
       }
       return (marquee.cursor + 1) % n;
     }
+
     function prevIndex(){
       const n = marquee.lines.length; if(!n) return 0;
-      if(marquee.loop.enabled && marquee.loop.a!=null && marquee.loop.b!=null){
-        const a = marquee.loop.a % n, b = marquee.loop.b % n;
-        if(a<=b){ return (marquee.cursor > a) ? marquee.cursor-1 : b; }
-        // wrapped range
-        return ((marquee.cursor<=b && marquee.cursor>0) || marquee.cursor > a) ? (marquee.cursor-1+n)%n : b;
+      if(hasLoop()){
+        const a = marquee.loop.a % n, b = marquee.loop.b % n; // a<=b guaranteed
+        return (marquee.cursor === a) ? b : (marquee.cursor - 1 + n) % n;
       }
       return (marquee.cursor - 1 + n) % n;
     }
 
     function updateABButtonLabel(){
-      const st = marquee.loop.stage % 4;
-      $('abLoopBtn').textContent = ['a','b','L','r'][st];
+      const st = marquee.loop.stage % 3;
+      const btn = $('abLoopBtn');
+      const label = ['a','b','r'][st];
+      btn.textContent = label;
+      btn.style.background = '#1f2937';
+      btn.style.color = '#fefce8';
+      if(label === 'b'){
+        btn.style.background = '#16a34a';
+        btn.style.color = '#fefce8';
+      } else if(label === 'r'){
+        btn.style.background = '#dc2626';
+        btn.style.color = '#fefce8';
+      }
     }
 
     function showMarqueeScreen(){
@@ -606,6 +620,7 @@ Excuse me"></textarea><br>
       const el = $('marqueeText');
       el.textContent = text;
       el.style.transition = 'none';
+      const token = ++marquee.animToken; // unique id for this animation
       const startX = vp.clientWidth;
       el.style.transform = `translateX(${startX}px)`;
       void el.offsetWidth;
@@ -614,7 +629,10 @@ Excuse me"></textarea><br>
       const durationSec = distance / marquee.pxPerSec;
       el.style.transition = `transform ${durationSec}s linear`;
       el.style.transform = `translateX(${-textWidth}px)`;
-      const handler = () => { el.removeEventListener('transitionend', handler); onDone && onDone(); };
+      const handler = () => {
+        el.removeEventListener('transitionend', handler);
+        if(token === marquee.animToken){ onDone && onDone(); }
+      };
       el.addEventListener('transitionend', handler);
     }
 
@@ -635,6 +653,7 @@ Excuse me"></textarea><br>
 
     function stopMarqueeLoop(){
       marquee.running = false;
+      marquee.animToken++;
       // Stop any current transition cleanly
       const el = $('marqueeText');
       el.style.transition = 'none';
@@ -937,13 +956,13 @@ Excuse me"></textarea><br>
 
     function updateHUD(){
       const current=state.cards[state.idx];
-      $('progress').textContent=`${Math.min(state.idx+1,state.cards.length)} / ${state.cards.length}`;
+      $('progress').textContent=`${Math.min(state.idx+1,state.cards.length)}/${state.cards.length}`;
       $('promptArea').textContent=current?.q??'';
       $('answerArea').textContent=current?.a??'';
       $('answerArea').style.opacity=state.shown?'1':'0.45';
       $('answerArea').style.filter=state.shown?'none':'blur(5px)';
       $('goBtn').textContent=state.shown?'Next':'Go';
-      $('reverseBtn').textContent=state.promptSide==='jp'?'EN→JP':'JP→EN';
+      $('reverseBtn').textContent=state.promptSide==='jp'?'EN':'JP';
       scheduleCardTimer();
     }
 
@@ -1097,12 +1116,23 @@ Excuse me"></textarea><br>
     $('nextLineBtn').onclick = ()=>{ if(!marquee.lines.length) return; stopMarqueeLoop(); marquee.running = true; showLineAt(nextIndex()); };
     $('abLoopBtn').onclick = ()=>{
       if(!marqueeHasMultiple()) return;
-      const st = marquee.loop.stage % 4;
+      const st = marquee.loop.stage % 3;
       const cur = currentIndex();
-      if(st===0){ marquee.loop.a = cur; marquee.loop.stage=1; showToast('A set'); }
-      else if(st===1){ marquee.loop.b = cur; marquee.loop.stage=2; showToast('B set'); }
-      else if(st===2){ normalizeRange(); marquee.loop.enabled = true; marquee.loop.stage=3; showToast('Loop A–B'); }
-      else { marquee.loop = { a:null, b:null, enabled:false, stage:0 }; showToast('Loop reset'); }
+      if(st===0){
+        marquee.loop.a = cur; marquee.loop.stage = 1; showToast('A set');
+      } else if(st===1){
+        marquee.loop.b = cur; normalizeRange(); marquee.loop.enabled = true; marquee.loop.stage = 2; showToast('Loop A–B');
+        // If current is outside [A,B], jump to A to respect the new loop immediately
+        const n = marquee.lines.length; if(n){
+          const a = marquee.loop.a % n, b = marquee.loop.b % n;
+          if(!(a <= marquee.cursor && marquee.cursor <= b)){
+            stopMarqueeLoop(); marquee.running = true; showLineAt(a);
+            updateABButtonLabel(); return;
+          }
+        }
+      } else {
+        marquee.loop = { a:null, b:null, enabled:false, stage:0 }; showToast('Loop reset');
+      }
       updateABButtonLabel();
     };
     // Tap panels to adjust font: Prompt = bigger, Answer = smaller
