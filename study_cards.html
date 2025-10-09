@@ -492,7 +492,9 @@ Excuse me"></textarea><br>
     }
     // Re-acquire on visibility gain (Android may auto-release on background)
     document.addEventListener('visibilitychange', ()=>{
-      if(document.visibilityState === 'visible' && marquee.running){ acquireWakeLock(); }
+      if(document.visibilityState === 'visible'){
+        if(marquee.running || timerActive()) acquireWakeLock();
+      }
     });
 
     function setMarqueeFont(px){
@@ -789,6 +791,7 @@ Excuse me"></textarea><br>
     let revealTO=null, nextTO=null;
     let timerInterval=null; // interval for countdown label
     let timerEndAt=0;       // epoch ms when current phase ends
+    function timerActive(){ return !!(revealTO || nextTO); }
     function cancelCardTimers(){
       if(revealTO){ clearTimeout(revealTO); revealTO=null; }
       if(nextTO){ clearTimeout(nextTO); nextTO=null; }
@@ -796,6 +799,8 @@ Excuse me"></textarea><br>
       timerEndAt = 0;
       // restore static label when not actively counting
       updateTimerLabel();
+      // Release screen wake if we were holding it for the timer (Marquee manages its own)
+      try{ if(!marquee.running) releaseWakeLock(); }catch{}
     }
 
     function startCountdown(ms){
@@ -818,6 +823,7 @@ Excuse me"></textarea><br>
       const secs = timerSeconds();
       if(!secs){ updateTimerLabel(); return; } // 0s: disabled
       const ms = secs*1000;
+      acquireWakeLock();
       if(!state.shown){ // waiting to reveal answer
         revealTO = setTimeout(()=>{ if(sessionActive()) go(); }, ms);
       } else { // answer visible -> move next
