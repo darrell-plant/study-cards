@@ -8,8 +8,10 @@ An offline-first Progressive Web App (PWA) for practising Japanese–English sen
 - 🔌 **Reconnect**: Reconnect to a previously chosen folder after restart.
 - 🔄 **Sync library**: Download/update sets from the online `library/` hosted in this repo.
 - 🗑 **Delete state**: Clear saved progress for a set (localStorage only).
-- 💀 **Delete set**: Remove the actual `.data` file from the chosen folder.
+- 💀 **Delete set**: Remove the `.data` file from the chosen folder (with confirmation).
 - 🔀 **Shuffle, Select, Reverse, Back step** controls during practice.
+- 🚗 **Car Mode**: Larger fonts, timed reveal, and hands-free operation.
+- 🎞 **Scroll Mode**: Continuous large-text marquee display for reading or group viewing.
 - 📊 **Progress tracking**: Saves your place and which side (JP/EN) is prompt.
 
 ## 📝 Deck file format
@@ -37,6 +39,7 @@ Excuse me
 - Each file listed in the manifest is downloaded into the chosen folder.
 - Sync policies: add new only, overwrite if changed, or force overwrite all.
 - Default is **overwrite if changed**.
+- Folder hierarchy (Groups) is now supported and the `Groups` dropdown filters Sets by subfolder.
 
 ## 🔐 Permissions
 - Chrome will prompt to grant folder access.
@@ -50,6 +53,7 @@ Excuse me
   - IndexedDB for persisting folder handles
   - localStorage for saving progress
   - Service Worker for offline caching
+  - Wake Lock API for car and scroll modes
 - No build step required.
 
 ## 🚀 Installation
@@ -59,6 +63,11 @@ Excuse me
 
 ## 🎨 Icons
 - `icon-192.png` and `icon-512.png` generated with ImageMagick for PWA manifest.
+
+## 📄 Usage tips
+- Tap JP area to increase font, EN area to decrease.
+- In Scroll mode, use arrows to move between items, and A/B/R to loop range.
+- Car Mode toggled via 🚗/🏠 icon.
 
 ## 📄 License
 MIT License © 2025
