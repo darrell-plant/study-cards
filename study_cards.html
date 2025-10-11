@@ -280,6 +280,34 @@ Excuse me"></textarea><br>
       applyViewFont();
     }
 
+    // -------- Beep (car-mode only) --------
+    let _audioCtx = null;
+    function ensureAudio(){
+      if(!_audioCtx){
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if(Ctx) _audioCtx = new Ctx();
+      }
+      return _audioCtx;
+    }
+    function playBeep(freq=880, dur=0.08, vol=0.06){
+      if(!carMode) return;                    // only in car-mode
+      const ctx = ensureAudio(); if(!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(vol, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + dur + 0.02);
+    }
+    // Convenience beeps for state changes
+    function beepReveal(){ playBeep(1200, 0.09, 0.08); } // higher pitch on reveal
+    function beepNext(){   playBeep(700,  0.09, 0.08); } // lower pitch on next/return
+
     // Library sync configuration (repo-hosted files)
     const LIB_INDEX_URL = 'library/index.json';  // GH Pages path to library manifest
     const LIB_TARGET_SUBDIR = '';                // write library decks into the chosen folder root
@@ -1175,6 +1203,7 @@ Excuse me"></textarea><br>
       }
       if(!state.shown){
         state.shown=true;updateHUD();saveProgress();
+        beepReveal();
       } else {
         state.idx++;
         if(state.idx>=state.cards.length){
@@ -1184,6 +1213,7 @@ Excuse me"></textarea><br>
           saveProgress();
         } else {
           state.shown=false;updateHUD();saveProgress();
+          beepNext();
         }
       }
     }
@@ -1275,8 +1305,8 @@ Excuse me"></textarea><br>
       }catch(err){ /* ignore */ }
     }
 
-    $('startBtn').onclick=startSession;
-    $('goBtn').onclick=()=>{ cancelCardTimers(); go(); };
+    $('startBtn').onclick = (e)=>{ ensureAudio(); startSession(e); };
+    $('goBtn').onclick=()=>{ ensureAudio(); cancelCardTimers(); go(); };
     $('backStepBtn').onclick=()=>{ cancelCardTimers(); stepBack(); };
     $('reverseBtn').onclick=()=>{ cancelCardTimers(); reverseSides(); };
     $('shuffleTopBtn').onclick = ()=>{ cancelCardTimers(); shuffleDeck(); scheduleCardTimer(); };
