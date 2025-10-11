@@ -139,7 +139,8 @@
       padding:0 14px;        /* horizontal breathing room */
       line-height:1;         /* avoid emoji baseline variance */
       vertical-align:middle; /* align in rows nicely */
-      -webkit-appearance:none;
+      appearance: none;
+      -webkit-appearance: none;
     }
     .ctrlBtn.scroll{background:#facc15;color:#1f1300;border:1px solid #fde68a}
 
@@ -305,8 +306,8 @@ Excuse me"></textarea><br>
       osc.stop(now + dur + 0.02);
     }
     // Convenience beeps for state changes
-    function beepReveal(){ playBeep(1200, 0.09, 0.2); } // higher pitch on reveal
-    function beepNext(){   playBeep(700,  0.09, 0.2); } // lower pitch on next/return
+    function beepReveal(){ playBeep(1200, 0.09, 0.25); } // higher pitch on reveal
+    function beepNext(){   playBeep(700,  0.09, 0.25); } // lower pitch on next/return
 
     // Library sync configuration (repo-hosted files)
     const LIB_INDEX_URL = 'library/index.json';  // GH Pages path to library manifest
