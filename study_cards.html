@@ -10,7 +10,7 @@
   <title>Study Cards</title>
   <style>
     :root{ --bar-h: 76px; }
-    body{font-family:sans-serif;background:#0b0f14;color:#3dba50;margin:0}
+    body{font-family:sans-serif;background:#0b0f14;color:#ae9b1c;margin:0}
     
     .wrap{ padding:1rem; }
     .hasBar .wrap{
@@ -32,6 +32,8 @@
     button:disabled:hover{ filter:none; }
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
     .card{border:1px solid #333;padding:0.5rem;margin:0rem;border-radius:12px;background:#121922;box-sizing:border-box}
+    /* Car mode alters card background */
+    body.carMode .card{ background:#570f06; }
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
     /* Top controls (session header) */
     .topBtn{
@@ -97,7 +99,7 @@
     .inline-group{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
 
     /* Hint paragraph colour */
-    .hint{ color:#3dba5073; }
+    .hint{ color:#ae9b1c; }
     select:disabled{ opacity:.55; filter:saturate(.6); }
 
     /* Blocking busy overlay */
@@ -198,6 +200,7 @@ Excuse me"></textarea><br>
 
       <button id="startBtn" disabled>Start session</button>
       <button id="marqueeBtnStart" disabled>Scroll</button>
+      <button id="carModeBtn" title="Toggle car mode" aria-label="Toggle car mode">🏠</button>
     </div>
 
     <div id="sessionCard" class="card" style="display:none">
@@ -260,6 +263,22 @@ Excuse me"></textarea><br>
     const BASE_GROUP = "__base__";  // UI shows as <base>
     let currentGroup = BASE_GROUP;
     const EXT = '.data';            // deck file extension
+
+    // Car mode (not persisted); affects single-panel threshold and default font
+    let carMode = false; // default non-car on startup
+    function applyCarModeUI(){
+      document.body.classList.toggle('carMode', carMode);
+      const btn = $('carModeBtn');
+      if(btn) btn.textContent = carMode ? '🚗' : '🏠';
+    }
+    function setCarMode(on){
+      carMode = !!on;
+      // Reset font size based on mode (persist font size itself as usual)
+      viewFontRem = carMode ? 2.6 : 2.0;
+      localStorage.setItem(VIEW_FONT_KEY, String(viewFontRem));
+      applyCarModeUI();
+      applyViewFont();
+    }
 
     // Library sync configuration (repo-hosted files)
     const LIB_INDEX_URL = 'library/index.json';  // GH Pages path to library manifest
@@ -529,7 +548,9 @@ Excuse me"></textarea><br>
       sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
       for(const d of dirs){
         const opt = document.createElement('option');
-        opt.value = d.name; opt.textContent = d.name;
+        opt.value = d.name;
+        opt.textContent = truncateString(d.name);
+        opt.title = d.name; // show full name on hover
         sel.appendChild(opt);
       }
       const names = new Set([BASE_GROUP, ...dirs.map(d=>d.name)]);
@@ -891,7 +912,7 @@ Excuse me"></textarea><br>
     function updateViewerLayout(){
       const vb = document.querySelector('.viewerBox');
       if(!vb) return;
-      const single = viewFontRem >= 2.0;
+      const single = carMode ? (viewFontRem >= 2.2) : false; // never single in non-car
       vb.classList.toggle('single', single);
       vb.classList.toggle('showPrompt', single && !state.shown);
       vb.classList.toggle('showAnswer', single && state.shown);
@@ -1203,6 +1224,9 @@ Excuse me"></textarea><br>
     $('reconnectFolderBtn').onclick = ensureFolderAccessInteractive; // try stored handle
     $('syncLibraryBtn').onclick = syncLibraryIntoFolder;            // refresh from library
     $('marqueeBtnStart').onclick = startMarqueeFromSelected;
+    $('carModeBtn').onclick = () => {
+      setCarMode(!carMode);
+    };
     $('marqueeBtnSession').onclick = startMarqueeFromSession;
     $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); releaseWakeLock(); hideMarqueeScreen(); };
     $('fontUpBtn').onclick = () => setMarqueeFont(marquee.fontPx + 4);
@@ -1338,6 +1362,8 @@ Excuse me"></textarea><br>
           updateStartEnabled();
         }
       }catch(err){ /* ignore */ }
+      // Default to non-car mode each launch (not persisted)
+      setCarMode(false);
       applyViewFont();
       updateViewerLayout();
     })();
