@@ -1,46 +1,7 @@
 {
-  "version": "2025-10-11T23:39:42Z",
+  "version": "2025-10-11T13:53:26Z",
   "files": [
     { "path": "000_test.data" }
-    ,{ "path": "miku-test/Miku_-_grammar_points.data" }
-    ,{ "path": "miku-test/Miku_casual_phrases.data" }
-    ,{ "path": "miku-test/Miku_examples.data" }
-    ,{ "path": "miku-test/No_33_し(And_on_top_of_that_).data" }
-    ,{ "path": "miku-test/No_35_-ようになった(Now_I_can_).data" }
-    ,{ "path": "miku-test/No_36_Potential_ように(In_order_to_).data" }
-    ,{ "path": "miku-test/No_38_とおもう(I_think_that_).data" }
-    ,{ "path": "miku-test/No_39_って_いって(い)た(Someone_said_that_).data" }
-    ,{ "path": "miku-test/No_40_って_いった(I_said_that_).data" }
-    ,{ "path": "miku-test/No_41_らしい(I_heard_that_).data" }
-    ,{ "path": "miku-test/No_42_かも_かもしれない(Might_Maybe).data" }
-    ,{ "path": "miku-test/No_43_ながら(While_doing_).data" }
-    ,{ "path": "miku-test/No_44_そう(It_seems_like_it_s_going_to_).data" }
-    ,{ "path": "miku-test/No_46_Volitional_form_とおもって(い)る(I_m_thinking.data" }
-    ,{ "path": "miku-test/No_47_Volitional_form_とおもって(い)た(I_was_going_t.data" }
-    ,{ "path": "miku-test/No_48_Volitional_form_とした_として(い)る(I_tried.data" }
-    ,{ "path": "miku-test/No_49_ちゃだめ(You_re_not_allowed_to_You_can_t_).data" }
-    ,{ "path": "miku-test/No_50_ちゃった(Oh_no_I_did_it._I_did_it_and_now.data" }
-    ,{ "path": "miku-test/No_51_てみる(I_try_-ing).data" }
-    ,{ "path": "miku-test/No_52_ても(Even_if_Even_though).data" }
-    ,{ "path": "miku-test/No_53_てくれる_てくれてありがとう.data" }
-    ,{ "path": "miku-test/No_54_てもらう_てあげる.data" }
-    ,{ "path": "miku-test/No_55_てくれる_てもらえますか.data" }
-    ,{ "path": "miku-test/No_56_か_かどうか(Whether).data" }
-    ,{ "path": "miku-test/No_57_のに(Even_though_In_spite_of_the_fact_that.data" }
-    ,{ "path": "miku-test/No_58_かな(I_wonder_)Part_1.data" }
-    ,{ "path": "miku-test/No_59_かな(I_wonder_)Part_2.data" }
-    ,{ "path": "miku-test/No_60_Noun_modification.data" }
-    ,{ "path": "miku-test/No_61_ておく(To_do_it_in_advance).data" }
-    ,{ "path": "miku-test/No_62_から_ので(Because).data" }
-    ,{ "path": "miku-test/No_63_みたい(It_seems_like_It_looks_like).data" }
-    ,{ "path": "miku-test/No_64_たら(And_then_this_happened_Why_don_t_you.data" }
-    ,{ "path": "miku-test/No_65_なら(If).data" }
-    ,{ "path": "miku-test/No_66_と(If).data" }
-    ,{ "path": "miku-test/No_68_ば(If).data" }
-    ,{ "path": "miku-test/No_69_んですか.data" }
-    ,{ "path": "miku-test/No_70_んだけど_んですが.data" }
-    ,{ "path": "miku-test/No_72_Passive_voice.data" }
-    ,{ "path": "miku-test/No_72_Passive_voice_-_examples.data" }
     ,{ "path": "miku/No_33_shi.data" }
     ,{ "path": "miku/No_35_-youninatta.data" }
     ,{ "path": "miku/No_36_Potential_youni.data" }
