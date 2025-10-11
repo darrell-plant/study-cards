@@ -299,8 +299,46 @@ Excuse me"></textarea><br>
         await idbSet('sentencesDir', dirHandle);
         $('setSelect').disabled = false;
         await populateGroupSelect();
+
+        // Try to restore saved group in this new folder
+        try{
+          const savedGroup = localStorage.getItem(SELECTED_GROUP_KEY);
+          if(savedGroup){
+            const sel = $('groupSelect');
+            if([...sel.options].some(o=>o.value===savedGroup)){
+              sel.value = savedGroup;
+              currentGroup = savedGroup;
+            } else {
+              currentGroup = BASE_GROUP;
+              sel.value = BASE_GROUP;
+            }
+          }
+        }catch{}
+
         await populateSetSelectFromDir();
-        $('pairs').value = '';
+
+        // Try to restore saved card within this group
+        try{
+          const savedCard = localStorage.getItem(SELECTED_CARD_KEY);
+          if(savedCard){
+            const sel = $('setSelect');
+            if([...sel.options].some(o=>o.value===savedCard)){
+              sel.value = savedCard;
+              const base = await getGroupDirHandle(currentGroup);
+              const fh = await base.getFileHandle(filenameFromSlug(savedCard));
+              let t = await readFileText(fh);
+              const name = titleCase(slugToNiceName(savedCard));
+              t = normalizeDeckTop(t, name);
+              $('pairs').value = t;
+            } else {
+              try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
+              $('pairs').value = '';
+            }
+          } else {
+            $('pairs').value = '';
+          }
+        }catch{ $('pairs').value = ''; }
+
         showToast('Folder selected');
       }catch(err){
         // user cancelled; keep disabled state
@@ -537,13 +575,32 @@ Excuse me"></textarea><br>
     async function populateGroupSelect(){
       const row = $('groupsRow');
       const sel = $('groupSelect');
-      if(!dirHandle){ row.style.display='none'; sel.disabled=true; currentGroup = BASE_GROUP; return; }
-      const dirs = await listSubdirs();
-      if(!dirs.length){
-        row.style.display='none'; sel.disabled=true; currentGroup = BASE_GROUP;
+      const prevGroup = currentGroup;
+
+      if(!dirHandle){
+        row.style.display='none';
+        sel.disabled=true;
+        currentGroup = BASE_GROUP;
+        // If group changed, ensure Cards list refreshes
+        if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
         return;
       }
-      row.style.display=''; sel.disabled = false;
+
+      const dirs = await listSubdirs();
+      if(!dirs.length){
+        // No subfolders: hide groups UI and lock to <base>
+        row.style.display='none';
+        sel.disabled=true;
+        currentGroup = BASE_GROUP;
+        sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+        // Proactively refresh Cards when switching to base
+        if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
+        return;
+      }
+
+      // There are subfolders: show row and populate list
+      row.style.display='';
+      sel.disabled = false;
       const prev = sel.value || currentGroup || BASE_GROUP;
       sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
       for(const d of dirs){
@@ -557,6 +614,9 @@ Excuse me"></textarea><br>
       const toSet = names.has(prev) ? prev : BASE_GROUP;
       sel.value = toSet;
       currentGroup = toSet;
+
+      // If group changed due to rebuild, refresh Cards
+      if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
     }
 
     async function populateSetSelectFromDir(selectedSlug=''){
@@ -898,6 +958,8 @@ Excuse me"></textarea><br>
     const state={cards:[],idx:0,shown:false,promptSide:'jp',done:false,setName:'',setSlug:''};
     // Viewer font sizing (applies to both panels, persists)
     const VIEW_FONT_KEY = 'sc_view_font_rem';
+    const SELECTED_GROUP_KEY = 'sc_selected_group';
+    const SELECTED_CARD_KEY  = 'sc_selected_card';
     let viewFontRem = parseFloat(localStorage.getItem(VIEW_FONT_KEY) || '2.0');
     function applyViewFont(){
       const v = Math.max(1.0, Math.min(4.0, viewFontRem));
@@ -1262,6 +1324,8 @@ Excuse me"></textarea><br>
 
     $('groupSelect').onchange = async function(){
       currentGroup = this.value || BASE_GROUP;
+      try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
+      try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}  // clear stale card
       await populateSetSelectFromDir('');
       $('pairs').value = '';
       updateStartEnabled();
@@ -1283,16 +1347,20 @@ Excuse me"></textarea><br>
         updateStartEnabled();
         return;
       }
-      if(!dirHandle){ return; }
+      if(!dirHandle){ try{ 
+        localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
+        return; }
       try{
         const base = await getGroupDirHandle(currentGroup);
         const fh = await base.getFileHandle(filenameFromSlug(slug));        let t = await readFileText(fh);
         const name = titleCase(slugToNiceName(slug));
         t = normalizeDeckTop(t, name)
         $('pairs').value=t;
+        try{ localStorage.setItem(SELECTED_CARD_KEY, slug); }catch{}
         updateStartEnabled();
       }catch(err){
         alert('Failed to read file. Did it move or get renamed?');
+        try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
         await populateSetSelectFromDir('');
         updateStartEnabled();
       }
@@ -1331,7 +1399,9 @@ Excuse me"></textarea><br>
       if(!slug || !dirHandle){ return; }
       try{
         const base = await getGroupDirHandle(currentGroup);
-        await base.removeEntry(filenameFromSlug(slug));        try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
+        await base.removeEntry(filenameFromSlug(slug));        
+        try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
+        try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
         showToast(`Deleted file: ${slugToNiceName(slug)}`);
         await populateSetSelectFromDir('');
         $('setSelect').value='';
@@ -1353,7 +1423,45 @@ Excuse me"></textarea><br>
           if(q==='granted'){
             $('setSelect').disabled = false;
             await populateGroupSelect();
+
+            // Restore previously selected group (if it exists)
+            try{
+              const savedGroup = localStorage.getItem(SELECTED_GROUP_KEY);
+              if(savedGroup){
+                const sel = $('groupSelect');
+                if([...sel.options].some(o=>o.value===savedGroup)){
+                  sel.value = savedGroup;
+                  currentGroup = savedGroup;
+                } else {
+                  currentGroup = BASE_GROUP;
+                  sel.value = BASE_GROUP;
+                }
+              }
+            }catch{}
+
             await populateSetSelectFromDir();
+
+            // Restore previously selected card (if it exists in this group)
+            try{
+              const savedCard = localStorage.getItem(SELECTED_CARD_KEY);
+              if(savedCard){
+                const sel = $('setSelect');
+                if([...sel.options].some(o=>o.value===savedCard)){
+                  sel.value = savedCard;
+                  // Load its content into textarea (same logic as onchange)
+                  const base = await getGroupDirHandle(currentGroup);
+                  const fh = await base.getFileHandle(filenameFromSlug(savedCard));
+                  let t = await readFileText(fh);
+                  const name = titleCase(slugToNiceName(savedCard));
+                  t = normalizeDeckTop(t, name);
+                  $('pairs').value = t;
+                } else {
+                  try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
+                }
+              }
+            }catch{}
+
+            updateStartEnabled();
             showToast('Folder restored');
           } else {
             // On mobile, permission prompts often require a user gesture
