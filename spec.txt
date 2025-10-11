@@ -1,0 +1,11 @@
+Very good!
+
+On the main screen (id="inputCard") we have 'Library controls' and 'Sets controls'
+
+1) rename "Sets" to "Cards"
+
+2) If the chosen_folder (selected library) contains folders Then
+    display a (new) row between 'Library controls' and 'Sets controls' containing:
+    a dropdown named "Groups" listing the names of the folders within the chosen_folder and first element <base> 
+    when a folder or <base> is selected populate the Sets dropdown with the data files in that folder
+

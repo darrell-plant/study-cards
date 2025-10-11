@@ -18,7 +18,7 @@
     }
 
     textarea{width:100%;min-height:200px;box-sizing:border-box;}
-    button{margin:0.25rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#facc15;cursor:pointer}
+    button{margin:0.20rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#facc15;cursor:pointer}
     button:hover{filter:brightness(1.08)}
     /* Disabled buttons look clearly inactive */
     button:disabled{
@@ -31,7 +31,7 @@
     }
     button:disabled:hover{ filter:none; }
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
-    .card{border:1px solid #333;padding:1rem;margin:0rem;border-radius:12px;background:#121922;box-sizing:border-box}
+    .card{border:1px solid #333;padding:0.5rem;margin:0rem;border-radius:12px;background:#121922;box-sizing:border-box}
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
     /* Top controls (session header) */
     .topBtn{
@@ -159,15 +159,23 @@
 
       <!-- Library controls -->
       <div class="inline-group">
-        <span class="sectionLabel" aria-hidden="true">Library:</span>
+        <span class="sectionLabel" aria-hidden="true">Library</span>
         <button id="switchFolderBtn" class="iconBtn" title="Pick a different folder" aria-label="Pick a different folder">📁</button>
         <button id="reconnectFolderBtn" class="iconBtn" title="Reconnect stored folder" aria-label="Reconnect stored folder">🔌</button>
         <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
       </div>
 
-      <!-- Sets controls -->
+      <!-- Groups controls (shown only if subfolders exist) -->
+      <div class="inline-group" id="groupsRow" style="display:none">
+        <label for="groupSelect" class="sectionLabel">Group</label>
+        <select id="groupSelect" disabled>
+          <option value="__base__">&lt;base&gt;</option>
+        </select>
+      </div> 
+
+      <!-- Cards controls -->
       <div class="inline-group">
-        <label for="setSelect">Sets:</label>
+        <label for="setSelect">Card</label>
         <select id="setSelect" disabled>
           <option value="">(none)</option>
         </select>
@@ -248,6 +256,9 @@ Excuse me"></textarea><br>
 
     // --- File System Access API (Chrome) ---
     let dirHandle = null;           // chosen /sentences directory
+    // Current group (subfolder) selection within chosen folder
+    const BASE_GROUP = "__base__";  // UI shows as <base>
+    let currentGroup = BASE_GROUP;
     const EXT = '.data';            // deck file extension
 
     // Library sync configuration (repo-hosted files)
@@ -268,17 +279,21 @@ Excuse me"></textarea><br>
         await navigator.storage?.persist?.();   // request persistent storage
         await idbSet('sentencesDir', dirHandle);
         $('setSelect').disabled = false;
+        await populateGroupSelect();
         await populateSetSelectFromDir();
+        $('pairs').value = '';
         showToast('Folder selected');
       }catch(err){
         // user cancelled; keep disabled state
       }
     }
 
-    async function listDataFiles(){
+    async function listDataFiles(group = currentGroup){
       if(!dirHandle) return [];
+      const base = await getGroupDirHandle(group);
+      if(!base) return [];
       const files=[];
-      for await (const [name, handle] of dirHandle.entries()){
+      for await (const [name, handle] of base.entries()){
         if(handle.kind==='file' && name.toLowerCase().endsWith(EXT)){
           files.push({ name, handle });
         }
@@ -295,7 +310,8 @@ Excuse me"></textarea><br>
 
     async function writeFileText(slug, text){
       if(!dirHandle) throw new Error('No folder selected');
-      const fh = await dirHandle.getFileHandle(filenameFromSlug(slug), { create:true });
+      const base = await getGroupDirHandle(currentGroup);
+      const fh = await base.getFileHandle(filenameFromSlug(slug), { create:true });
       const ws = await fh.createWritable();
       await ws.write(text);
       await ws.close();
@@ -333,6 +349,7 @@ Excuse me"></textarea><br>
           }
           if(q === 'granted'){
             $('setSelect').disabled = false;
+            await populateGroupSelect();
             await populateSetSelectFromDir();
             showToast('Folder reconnected');
             return true;
@@ -356,6 +373,37 @@ Excuse me"></textarea><br>
     }
     async function ensureSubdir(dirHandle, name){
       return name ? await dirHandle.getDirectoryHandle(name, { create:true }) : dirHandle;
+    }
+
+    async function listSubdirs(){
+      if(!dirHandle) return [];
+      const dirs = [];
+      for await (const [name, handle] of dirHandle.entries()){
+        if(handle.kind === 'directory') dirs.push({ name, handle });
+      }
+      const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
+      dirs.sort((a,b)=>coll.compare(a.name,b.name));
+      return dirs;
+    }
+    async function getGroupDirHandle(group){
+      if(!dirHandle) return null;
+      if(!group || group === BASE_GROUP) return dirHandle;
+      try { return await dirHandle.getDirectoryHandle(group); }
+      catch { return null; }
+    }
+
+    // Helper: ensure all subdirs for a relative path, return { dir, filename }
+    async function ensurePath(dirHandle, relPath){
+      // Normalize and split the relative path into parts; last part is filename
+      const clean = String(relPath||'').replace(/^\/*/,'').replace(/^library\//,'');
+      const parts = clean.split('/').filter(Boolean);
+      let dir = dirHandle;
+      for(let i=0;i<parts.length-1;i++){
+        const seg = parts[i];
+        dir = await dir.getDirectoryHandle(seg, { create:true });
+      }
+      const filename = parts[parts.length-1] || '';
+      return { dir, filename };
     }
     async function fileExists(dir, filename){
       try { await dir.getFileHandle(filename); return true; }
@@ -392,24 +440,28 @@ Excuse me"></textarea><br>
           const rel = typeof item === 'string' ? item : (item.path || item.file || item.name);
           if(!rel) continue;
           try{
-            const name = rel.split('/').pop();
-            const libText = await fetchTextScoped('library/' + rel.replace(/^library\//,''));
+            // Normalize relative path under /library (remote) and local dir structure
+            const relNorm = String(rel).replace(/^library\//,'').replace(/^\/*/,'');
+            const { dir, filename } = await ensurePath(targetDir, relNorm);
+
+            // Fetch the remote text using the same relative structure under /library
+            const libText = await fetchTextScoped('library/' + relNorm);
 
             if(SYNC_POLICY === 'addNewOnly'){
-              if(await fileExists(targetDir, name)){ skipped++; continue; }
-              const fh = await targetDir.getFileHandle(name, { create:true });
+              if(await fileExists(dir, filename)){ skipped++; continue; }
+              const fh = await dir.getFileHandle(filename, { create:true });
               const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
             }
 
             if(SYNC_POLICY === 'overwriteChanged'){
-              const current = await readFileIfExists(targetDir, name);
+              const current = await readFileIfExists(dir, filename);
               if(current !== null && current === libText){ skipped++; continue; }
-              const fh = await targetDir.getFileHandle(name, { create:true });
+              const fh = await dir.getFileHandle(filename, { create:true });
               const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
             }
 
             // 'forceOverwriteAll'
-            const fh = await targetDir.getFileHandle(name, { create:true });
+            const fh = await dir.getFileHandle(filename, { create:true });
             const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++;
           }catch(err){
             console.warn('Sync fail', rel, err);
@@ -417,6 +469,7 @@ Excuse me"></textarea><br>
           }
         }
 
+        await populateGroupSelect();
         await populateSetSelectFromDir();
         showToast(`Library sync: ${wrote} wrote, ${skipped} skipped${errors?`, ${errors} errors`:''}`);
       } finally {
@@ -462,23 +515,47 @@ Excuse me"></textarea><br>
       });
     }
 
+    async function populateGroupSelect(){
+      const row = $('groupsRow');
+      const sel = $('groupSelect');
+      if(!dirHandle){ row.style.display='none'; sel.disabled=true; currentGroup = BASE_GROUP; return; }
+      const dirs = await listSubdirs();
+      if(!dirs.length){
+        row.style.display='none'; sel.disabled=true; currentGroup = BASE_GROUP;
+        return;
+      }
+      row.style.display=''; sel.disabled = false;
+      const prev = sel.value || currentGroup || BASE_GROUP;
+      sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+      for(const d of dirs){
+        const opt = document.createElement('option');
+        opt.value = d.name; opt.textContent = d.name;
+        sel.appendChild(opt);
+      }
+      const names = new Set([BASE_GROUP, ...dirs.map(d=>d.name)]);
+      const toSet = names.has(prev) ? prev : BASE_GROUP;
+      sel.value = toSet;
+      currentGroup = toSet;
+    }
+
     async function populateSetSelectFromDir(selectedSlug=''){
       const sel=$('setSelect');
-      const current = sel.value;
+      const currentVal = sel.value;
       sel.innerHTML='<option value="">(none)</option>';
-      const files = await listDataFiles();
+      const files = await listDataFiles(currentGroup);
       const items = files.map(f=>{ const slug = slugFromFilename(f.name); return { slug, display: titleCase(slugToNiceName(slug)) }; });
       const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
       items.sort((a,b)=>coll.compare(a.display,b.display)||a.slug.localeCompare(b.slug));
       for (const {slug, display} of items){
         const opt = document.createElement('option');
         opt.value = slug;
-        opt.textContent = truncateString(display); // label shown to user
-        opt.title = display;                       // full name as tooltip
+        opt.textContent = truncateString(display);
+        opt.title = display;
         sel.appendChild(opt);
       }
-      const toSet = selectedSlug || (items.some(i=>i.slug===current)? current : '');
+      const toSet = selectedSlug || (items.some(i=>i.slug===currentVal)? currentVal : '');
       sel.value = toSet;
+      sel.disabled = false;
     }
 
     // ===== Marquee mode state =====
@@ -676,8 +753,8 @@ Excuse me"></textarea><br>
     async function getJPListForSlug(slug){
       if(!dirHandle) return [];
       try{
-        const fh = await dirHandle.getFileHandle(filenameFromSlug(slug));
-        const t = await readFileText(fh);
+        const base = await getGroupDirHandle(currentGroup);
+        const fh = await base.getFileHandle(filenameFromSlug(slug));        const t = await readFileText(fh);
         const pairs = parsePairs(t);
         return pairs.map(p=>p[0]).filter(Boolean);
       }catch{
@@ -1158,6 +1235,14 @@ Excuse me"></textarea><br>
       }
       updateABButtonLabel();
     };
+
+    $('groupSelect').onchange = async function(){
+      currentGroup = this.value || BASE_GROUP;
+      await populateSetSelectFromDir('');
+      $('pairs').value = '';
+      updateStartEnabled();
+    };
+
     // Tap panels to adjust font: Prompt = bigger, Answer = smaller
     $('promptArea').addEventListener('click', ()=>{ bumpViewFont(0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
     $('answerArea').addEventListener('click', ()=>{ bumpViewFont(-0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
@@ -1176,8 +1261,8 @@ Excuse me"></textarea><br>
       }
       if(!dirHandle){ return; }
       try{
-        const fh = await dirHandle.getFileHandle(filenameFromSlug(slug));
-        let t = await readFileText(fh);
+        const base = await getGroupDirHandle(currentGroup);
+        const fh = await base.getFileHandle(filenameFromSlug(slug));        let t = await readFileText(fh);
         const name = titleCase(slugToNiceName(slug));
         t = normalizeDeckTop(t, name)
         $('pairs').value=t;
@@ -1221,8 +1306,8 @@ Excuse me"></textarea><br>
       const slug = $('setSelect').value;
       if(!slug || !dirHandle){ return; }
       try{
-        await dirHandle.removeEntry(filenameFromSlug(slug));
-        try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
+        const base = await getGroupDirHandle(currentGroup);
+        await base.removeEntry(filenameFromSlug(slug));        try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
         showToast(`Deleted file: ${slugToNiceName(slug)}`);
         await populateSetSelectFromDir('');
         $('setSelect').value='';
@@ -1243,6 +1328,7 @@ Excuse me"></textarea><br>
           const q = await dirHandle.queryPermission({ mode:'readwrite' });
           if(q==='granted'){
             $('setSelect').disabled = false;
+            await populateGroupSelect();
             await populateSetSelectFromDir();
             showToast('Folder restored');
           } else {

@@ -1,5 +1,5 @@
 // sw.js
-const CACHE = 'sc-v8';
+const CACHE = 'sc-v9';
 
 // Put only files that truly exist next to sw.js (add icons if you have them)
 const ASSETS = [
