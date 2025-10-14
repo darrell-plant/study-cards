@@ -6,6 +6,8 @@
 
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0b0f14">
+  <!-- Inline SVG favicon to prevent 404s and provide an emoji icon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎴</text></svg>">
   
   <title>Study Cards</title>
   <style>
@@ -179,13 +181,12 @@
       <!-- Cards controls -->
       <div class="inline-group">
         <label for="setSelect">Card</label>
-        <select id="setSelect" disabled>
+        <select id="setSelect" multiple size="8" disabled>
           <option value="">(none)</option>
         </select>
         <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
         <button id="deleteFileBtn" class="iconBtn" title="Delete set file (destructive)" aria-label="Delete set file">💀</button>
       </div>
-
       <br>
 
       <textarea id="pairs" placeholder="NAME: Example
@@ -202,6 +203,7 @@ Excuse me"></textarea><br>
       <button id="startBtn" disabled>Start session</button>
       <button id="marqueeBtnStart" disabled>Scroll</button>
       <button id="carModeBtn" title="Toggle car mode" aria-label="Toggle car mode">🏠</button>
+      <button id="saveBtn" type="button" title="Save to file" aria-label="Save to file" disabled>💾</button>
     </div>
 
     <div id="sessionCard" class="card" style="display:none">
@@ -259,6 +261,12 @@ Excuse me"></textarea><br>
     const $=id=>document.getElementById(id);
 
     // --- File System Access API (Chrome) ---
+    // ---- DEBUG SAVE helper ----
+    const DEBUG_SAVE = true;
+    function dbgSave(msg, extra){
+      try{ console.log('[SAVE]', msg, extra||''); }catch{}
+      if(DEBUG_SAVE){ try{ showToast(String(msg)); }catch{} }
+    }
     let dirHandle = null;           // chosen /sentences directory
     // Current group (subfolder) selection within chosen folder
     const BASE_GROUP = "__base__";  // UI shows as <base>
@@ -358,7 +366,8 @@ Excuse me"></textarea><br>
               const fh = await base.getFileHandle(filenameFromSlug(savedCard));
               let t = await readFileText(fh);
               const name = titleCase(slugToNiceName(savedCard));
-              t = normalizeDeckTop(t, name);
+              const pairs = parsePairs(t);
+              t = normalizeDeckTop(t, name, 1, pairs.length);
               $('pairs').value = t;
             } else {
               try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
@@ -402,6 +411,99 @@ Excuse me"></textarea><br>
       const ws = await fh.createWritable();
       await ws.write(text);
       await ws.close();
+    }
+
+    async function saveCurrentTextareaToFile(){
+      console.log('[SAVE] handler fired');
+      try{ showToast('Save clicked'); }catch{}
+      if(!dirHandle){
+        dbgSave('No dirHandle → prompting for folder…');
+        await chooseSentencesFolder();
+        if(!dirHandle){ dbgSave('Folder pick canceled'); return; }
+      }
+      const txtArea = $('pairs');
+      if(!txtArea){ dbgSave('Textarea not found'); return; }
+
+      // Ensure we actually have write permission (Android can silently drop it)
+      try{
+        let q = await dirHandle.queryPermission({ mode:'readwrite' });
+        dbgSave('queryPermission', q);
+        if(q !== 'granted'){
+          q = await dirHandle.requestPermission({ mode:'readwrite' });
+          dbgSave('requestPermission', q);
+          if(q !== 'granted'){
+            dbgSave('No write permission');
+            return;
+          }
+        }
+      }catch(e){ dbgSave('Permission APIs not supported', e?.message||e); }
+
+      const slugs = getSelectedSlugs();
+      dbgSave('Selected slugs', slugs);
+      if(slugs.length < 1){
+        dbgSave('No Card selected');
+        return;
+      }
+      // Validate header
+      const currentHeader = headerNameFromTextarea();
+      dbgSave('Header NAME', currentHeader||'(none)');
+      if(!currentHeader){
+        dbgSave('Missing NAME: header -> abort');
+        const sb=$('saveBtn'); if(sb) sb.disabled = true;
+        return;
+      }
+
+      // Prepare cleaned text: enforce clean NAME (no counts), keep the rest
+      const lines = txtArea.value.split(/\r?\n/);
+      lines[0] = `NAME: ${titleCase(currentHeader)}`;
+      let cleanedText = lines.join('\n');
+      cleanedText = cleanedText.replace(/^(NAME:.*?)(\r?\n\s*)+/, '$1\n\n');
+      dbgSave('Prepared text length', cleanedText.length);
+
+      // Compare header to the original card’s display name
+      const selectedSlug = slugs[0];
+      const baselineDisplay = titleCase(slugToNiceName(selectedSlug));
+      const headerDisplay   = titleCase(currentHeader);
+      dbgSave('Baseline vs Header', { baselineDisplay, headerDisplay });
+
+      let targetSlug;
+      if(slugs.length === 1 && headerDisplay === baselineDisplay){
+        targetSlug = selectedSlug; // overwrite original when single + same name
+      } else {
+        targetSlug = await ensureUniqueSlug(slugify(headerDisplay)); // save as new when renamed or multi-select
+      }
+      dbgSave('Target slug', targetSlug);
+
+      // Resolve actual target directory (current group)
+      const base = await getGroupDirHandle(currentGroup);
+      if(!base){ dbgSave('Group dir missing', currentGroup); return; }
+
+      try{
+        dbgSave('Creating file handle', filenameFromSlug(targetSlug));
+        const fh = await base.getFileHandle(filenameFromSlug(targetSlug), { create:true });
+        dbgSave('Creating writable…');
+        const ws = await fh.createWritable();
+        dbgSave('Writing…');
+        await ws.write(cleanedText);
+        dbgSave('Closing…');
+        await ws.close();
+
+        if(targetSlug === selectedSlug){ dbgSave('Saved (overwrite)'); }
+        else if(slugs.length > 1){ dbgSave('Saved combined as new'); }
+        else { dbgSave('Saved as new'); }
+
+        await populateSetSelectFromDir(targetSlug);
+        try{ localStorage.setItem(SELECTED_CARD_KEY, targetSlug); }catch{}
+      }catch(err){
+        dbgSave('Save failed → picker fallback', err?.message||err);
+        const ok = await saveViaPickerFallback(filenameFromSlug(targetSlug), cleanedText);
+        if(!ok){
+          dbgSave('Picker fallback failed');
+          alert('Unable to save the file. Try a different folder using 📁 Switch folder.');
+        } else {
+          await populateSetSelectFromDir('');
+        }
+      }
     }
 
     async function saveViaPickerFallback(filename, text){
@@ -669,6 +771,45 @@ Excuse me"></textarea><br>
       sel.disabled = false;
     }
 
+    function getSelectedSlugs(){
+      const sel = $('setSelect');
+      if(!sel) return [];
+      const out = [];
+      for(const opt of sel.selectedOptions){
+        if(opt.value) out.push(opt.value);
+      }
+      return out;
+    }
+
+    // Read one deck’s text (raw file) and return parsed pairs (header ignored).
+    async function readDeckPairsForSlug(slug){
+      const base = await getGroupDirHandle(currentGroup);
+      const fh   = await base.getFileHandle(filenameFromSlug(slug));
+      const txt  = await readFileText(fh);
+      return parsePairs(txt); // parsePairs ignores a first-line NAME:
+    }
+
+    // Build a combined textarea text and pairs for N slugs.
+    // - Produces: NAME: Combined (N)
+    // - Then all pairs (JP/EN) concatenated with exactly one blank line between pairs.
+    async function buildCombinedFromSelected(slugs){
+      const allPairs = [];
+      for(const slug of slugs){
+        try{
+          const ps = await readDeckPairsForSlug(slug);
+          if(ps && ps.length) allPairs.push(...ps);
+        }catch{
+          // skip missing/unreadable files
+        }
+      }
+      const setsCount = slugs.length;
+      const pairCount = allPairs.length;
+      let text = `NAME: Combined (${setsCount} / ${pairCount})\n\n`;
+      text += allPairs.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
+      if(text && !text.endsWith('\n')) text += '\n';
+      return { text, pairs: allPairs, setsCount, pairCount };
+    }
+
     // ===== Marquee mode state =====
     const MARQUEE_FONT_KEY = 'sc_marquee_font';
     const MARQUEE_SPEED_KEY = 'sc_marquee_speed'; // px per second
@@ -869,13 +1010,28 @@ Excuse me"></textarea><br>
     }
 
     async function startMarqueeFromSelected(){
-      const slug = $('setSelect').value;
-      if(!slug) return;
+      const slugs = getSelectedSlugs();
+      if(!slugs.length) return;
+
       marquee.caller = 'start';
-      marquee.lines = await getJPListForSlug(slug);
+
+      if(slugs.length === 1){
+        marquee.lines = await getJPListForSlug(slugs[0]);
+      }else{
+        // Combine JP lines across all selected decks
+        const all = [];
+        for(const slug of slugs){
+          try{
+            const ps = await readDeckPairsForSlug(slug);
+            for(const [jp] of ps){ if(jp) all.push(jp); }
+          }catch{}
+        }
+        marquee.lines = all;
+      }
+
       marquee.cursor = 0;
       if(!marquee.lines.length){ showToast('No JP lines'); return; }
-      // Show/hide nav controls based on number of lines
+
       const multi = marqueeHasMultiple();
       ['prevLineBtn','nextLineBtn','abLoopBtn'].forEach(id=>$(id).style.display = multi ? '' : 'none');
       marquee.loop = { a:null, b:null, enabled:false, stage:0 };
@@ -980,6 +1136,21 @@ Excuse me"></textarea><br>
       return pairs;
     }
 
+    function sanitizeHeaderName(raw){
+      const s = String(raw||'').trim();
+      // strip trailing counts like "(2 / 20)"
+      return s.replace(/\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*$/, '');
+    }
+
+    function headerNameFromTextarea(){
+      const ta = $('pairs'); if(!ta) return '';
+      const first = (ta.value.split(/\r?\n/,1)[0]||'');
+      const m = first.match(/^\s*name\s*:\s*(.*)$/i);
+      if(!m) return '';
+      const cleaned = sanitizeHeaderName(m[1]);
+      return cleaned.trim();
+    }
+
     const state={cards:[],idx:0,shown:false,promptSide:'jp',done:false,setName:'',setSlug:''};
     // Viewer font sizing (applies to both panels, persists)
     const VIEW_FONT_KEY = 'sc_view_font_rem';
@@ -1006,7 +1177,7 @@ Excuse me"></textarea><br>
     }
 
     // ===== Study Card Timer =====
-    const TIMER_OPTIONS = [0,10,20,30,60];
+    const TIMER_OPTIONS = [0,5,10,20,30];
     let timerIdx = parseInt(localStorage.getItem('sc_timer_idx') || '0', 10);
     if(!(timerIdx>=0 && timerIdx<TIMER_OPTIONS.length)) timerIdx = 0;
     function timerSeconds(){ return TIMER_OPTIONS[timerIdx]; }
@@ -1069,7 +1240,32 @@ Excuse me"></textarea><br>
       const userText = $('pairs').value.trim();
       const lines = userText.split(/\r?\n/);
       const m = (lines[0]||'').match(/^\s*name:\s*(.+)/i);
+      const selectedSlugsMulti = getSelectedSlugs();
 
+      // ---------- NEW: Multi-select flow ----------
+      if (selectedSlugsMulti.length > 1){
+        const { pairs } = await buildCombinedFromSelected(selectedSlugsMulti);
+        if(!pairs.length){ alert('No pairs found'); return; }
+
+        state.setName = `Combined (${selectedSlugsMulti.length})`;
+        state.setSlug = ''; // transient session; do not persist progress per-file
+        // honour saved promptSide? For combined, default to previous or 'jp'
+        const saved = null;
+        state.promptSide = 'jp';
+
+        state.cards = mapPairsToCards(pairs, state.promptSide);
+        state.idx = 0; state.shown = false; state.done = false;
+
+        $('inputCard').style.display='none';
+        $('sessionCard').style.display='block';
+        $('actionBar').style.display='flex';
+        document.body.classList.add('hasBar');
+        updateHUD();
+        updateTimerLabel();
+        return;
+      }
+      // ---------- END NEW ----------
+      
       // Resolve display name and slug.
       // IMPORTANT: If user selected an existing set, preserve its slug EXACTLY ...
       let displayName, slug;
@@ -1081,12 +1277,15 @@ Excuse me"></textarea><br>
         const baselineDisplay = titleCase(slugToNiceName(selectedSlug)); // e.g., "01. Cause Reason"
 
         if (m) {
-          // Normalize header text for consistent comparison/printing
-          displayName = titleCase(m[1].trim());
+          // Normalize header text: strip optional counts suffix like "(N / M)"
+          const rawName = (m[1] || '').trim();
+          const nameNoCounts = rawName.replace(/\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*$/,'');
+          displayName = titleCase(nameNoCounts);
+          // Persist header without counts so we don't trigger clone behaviour
           lines[0] = `NAME: ${displayName}`;
 
           // Only clone to a new file if the user actually changed the NAME
-          // compared to what this slug normally displays as.
+          // compared to what this slug normally displays as (ignore counts)
           if (displayName !== baselineDisplay) {
             const proposed = slugify(displayName);            // canonical base (may remove dot)
             slug = await ensureUniqueSlug(proposed);          // ensure uniqueness when cloning
@@ -1099,8 +1298,10 @@ Excuse me"></textarea><br>
       } else {
         // No existing file selected — new or pasted content
         if (m) {
-          // Create a canonical slug from the provided name
-          displayName = titleCase(m[1].trim());
+          // Normalize header and strip counts before slugifying
+          const rawName = (m[1] || '').trim();
+          const nameNoCounts = rawName.replace(/\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*$/,'');
+          displayName = titleCase(nameNoCounts);
           slug = slugify(displayName);
           lines[0] = `NAME: ${displayName}`;
         } else {
@@ -1134,27 +1335,12 @@ Excuse me"></textarea><br>
         state.idx = 0; state.shown = false; state.done = false;
       }
 
-      // Write deck to file (always) so source of truth is the file
-      let savedOk = false;
-      try{
-        await writeFileText(slug, textToSave);
-        savedOk = true;
-      }catch(err){
-        console.warn('writeFileText failed, trying Save As picker', err);
-        savedOk = await saveViaPickerFallback(filenameFromSlug(slug), textToSave);
-      }
-      if(!savedOk){
-        alert('Unable to create a new file in the selected folder on this device.\n\nTry:\n• Library → 📁 Switch folder (e.g., Downloads/StudyCards)\n• Or use “Save As” and then switch the app’s folder to where you saved it.');
-        return;
-      }
-
       $('inputCard').style.display='none';
       $('sessionCard').style.display='block';
       $('actionBar').style.display='flex';
       document.body.classList.add('hasBar');
       updateHUD();
       updateTimerLabel();
-      scheduleCardTimer();
       // refresh select from disk to ensure presence
       await populateSetSelectFromDir(slug);
     }
@@ -1173,11 +1359,23 @@ Excuse me"></textarea><br>
     }
 
     function updateStartEnabled(){
-      const hasSet = $('setSelect').value !== '';
-      const hasText = $('pairs').value.trim().length > 0;
+      const ta = $('pairs');
+      const slugs = getSelectedSlugs();
+      const hasSet = slugs.length > 0;
+      const hasText = ta.value.trim().length > 0;
+
+      // Start/Scroll rules unchanged
       $('startBtn').disabled = !(hasSet || hasText);
-      // Marquee-from-start requires a selected set
-      $('marqueeBtnStart').disabled = !hasSet;
+      $('marqueeBtnStart').disabled = !hasSet; // Scroll-from-home needs at least one set
+
+      // Save enabled when:
+      // - at least one card is selected (single or multi)
+      // - NAME header exists (non-blank)
+      // - textarea has any content
+      const headerOk = !!headerNameFromTextarea();
+      const enableSave = hasSet && headerOk && hasText;
+      const sb = $('saveBtn');
+      if(sb) sb.disabled = !enableSave;
     }
 
     function saveProgress(){
@@ -1202,10 +1400,18 @@ Excuse me"></textarea><br>
       } else {
         state.idx++;
         if(state.idx>=state.cards.length){
-          $('promptArea').textContent='Done!';$('answerArea').textContent='';
+          // End of deck: show "Done!" in BOTH panels and mark as done
+          $('promptArea').textContent='Done!';
+          $('answerArea').textContent='Done!';
           $('progress').textContent=`${state.cards.length} / ${state.cards.length}`;
-          state.idx=state.cards.length-1;state.done=true;$('goBtn').textContent='Restart';
+          state.idx=state.cards.length-1;
+          state.done=true;
+          $('goBtn').textContent='Restart';
           saveProgress();
+          // If a timer is configured (>0s), schedule auto-restart after countdown
+          if (timerSeconds() > 0) {
+            scheduleCardTimer();
+          }
         } else {
           state.shown=false;updateHUD();saveProgress();
           beepNext();
@@ -1283,6 +1489,8 @@ Excuse me"></textarea><br>
     });
     
     $('pairs').addEventListener('input', updateStartEnabled);
+    $('pairs').addEventListener('focus', updateStartEnabled);
+    $('pairs').addEventListener('blur',  updateStartEnabled);
 
     // highlight the japanese text to simplify opening in 
     // phone's Translation service
@@ -1314,6 +1522,19 @@ Excuse me"></textarea><br>
     $('carModeBtn').onclick = () => {
       setCarMode(!carMode);
     };
+    // Bind Save with addEventListener to guarantee firing and log the event
+    $('saveBtn').addEventListener('click', (e)=>{
+      console.log('[SAVE] click event', e);
+      e.preventDefault();
+      e.stopPropagation();
+      saveCurrentTextareaToFile();
+      setTimeout(updateStartEnabled, 0);
+    });
+    console.log('[SAVE] saveBtn handler attached (addEventListener)');
+    // TEMP: global click logger for the Save button (will be removed later)
+    (document.getElementById('saveBtn'))?.addEventListener('click', ()=>{
+      console.log('[SAVE] saveBtn received a click (post-bind)');
+    });
     $('marqueeBtnSession').onclick = startMarqueeFromSession;
     $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); hideMarqueeScreen(); };
     $('fontUpBtn').onclick = () => setMarqueeFont(marquee.fontPx + 4);
@@ -1366,46 +1587,66 @@ Excuse me"></textarea><br>
 
     // Load selected set into textarea
     $('setSelect').onchange = async function(){
-      const slug=this.value;
-      if(!slug){
-        $('pairs').value='';           // clears and shows placeholder
+      const slugs = getSelectedSlugs();
+
+      // If "(none)" was clicked, clear selection entirely (no mixed state)
+      if(this.selectedOptions.length === 0 || (this.selectedOptions.length === 1 && this.selectedOptions[0].value === '')){
+        this.value = ''; // clear
+        $('pairs').value = '';
         updateStartEnabled();
         return;
       }
-      if(!dirHandle){ try{ 
-        localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-        return; }
-      try{
-        const base = await getGroupDirHandle(currentGroup);
-        const fh = await base.getFileHandle(filenameFromSlug(slug));        let t = await readFileText(fh);
-        const name = titleCase(slugToNiceName(slug));
-        t = normalizeDeckTop(t, name)
-        $('pairs').value=t;
-        try{ localStorage.setItem(SELECTED_CARD_KEY, slug); }catch{}
+
+      if(slugs.length === 1){
+        // Single deck: load as before, normalize top
+        try{
+          const base = await getGroupDirHandle(currentGroup);
+          const fh = await base.getFileHandle(filenameFromSlug(slugs[0]));
+          let t = await readFileText(fh);
+          const name = titleCase(slugToNiceName(slugs[0]));
+          const pairs = parsePairs(t);
+          t = normalizeDeckTop(t, name, 1, pairs.length);
+          $('pairs').value = t;
+          try{ localStorage.setItem(SELECTED_CARD_KEY, slugs[0]); }catch{}
+        }catch(err){
+          alert('Failed to read file. Did it move or get renamed?');
+          try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
+          await populateSetSelectFromDir('');
+        }
         updateStartEnabled();
-      }catch(err){
-        alert('Failed to read file. Did it move or get renamed?');
-        try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-        await populateSetSelectFromDir('');
-        updateStartEnabled();
+        return;
       }
+
+      // Multiple decks: build combined view
+      const { text } = await buildCombinedFromSelected(slugs);
+      $('pairs').value = text;
+      // Do NOT persist SELECTED_CARD_KEY for multi-selection (ambiguous)
+      try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
+      updateStartEnabled();
     };
 
-    function normalizeDeckTop(text, defaultName = "Example") {
+    function normalizeDeckTop(text, defaultName = "Example", setsCount = null, pairCount = null) {
       // 1) strip all leading whitespace/newlines
-      text = text.replace(/^\s+/, "");
+      text = String(text || '').replace(/^\s+/, "");
 
-      // 2) ensure NAME header exists (case-insensitive, tolerate weird spacing)
+      // 2) capture/ensure NAME header (case-insensitive)
       const m = text.match(/^(?:NAME\s*:\s*)([^\r\n]*)/im);
+      let name;
       if (m) {
-        const name = m[1].trim();
+        name = (m[1] || '').trim() || defaultName;
         text = text.replace(/^(?:NAME\s*:\s*)(.*)/im, `NAME: ${name}`);
       } else {
-        text = `NAME: ${defaultName}\n\n` + text;
+        name = defaultName;
+        text = `NAME: ${name}\n\n` + text;
       }
 
       // 3) normalize to exactly ONE empty line after the header
       text = text.replace(/^(NAME:.*?)(\r?\n\s*)+/, "$1\n\n");
+
+      // 4) if counts provided, rewrite header to include (sets / pairs)
+      if (setsCount != null && pairCount != null) {
+        text = text.replace(/^NAME:\s*.*$/m, `NAME: ${name} (${setsCount} / ${pairCount})`);
+      }
 
       return text;
     }
@@ -1478,7 +1719,8 @@ Excuse me"></textarea><br>
                   const fh = await base.getFileHandle(filenameFromSlug(savedCard));
                   let t = await readFileText(fh);
                   const name = titleCase(slugToNiceName(savedCard));
-                  t = normalizeDeckTop(t, name);
+                  const pairs = parsePairs(t);
+                  t = normalizeDeckTop(t, name, 1, pairs.length);
                   $('pairs').value = t;
                 } else {
                   try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}

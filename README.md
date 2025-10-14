@@ -12,7 +12,7 @@ An offline-first Progressive Web App (PWA) for practising Japanese–English sen
 - 🔀 **Shuffle, Select, Reverse, Back step** controls during practice.
 - 🚗 **Car Mode**: Larger fonts, timed reveal, and hands-free operation.
 - 🎞 **Scroll Mode**: Continuous large-text marquee display for reading or group viewing.
-- 📊 **Progress tracking**: Saves your place and which side (JP/EN) is prompt.
+- 📊 **Progress & Save system**: Tracks your current progress and direction (JP→EN / EN→JP). Explicit Save (💾) allows overwriting or creating new combined sets.
 
 ## 📝 Deck file format
 Each set is a plain text file with extension `.data`:
@@ -40,6 +40,7 @@ Excuse me
 - Sync policies: add new only, overwrite if changed, or force overwrite all.
 - Default is **overwrite if changed**.
 - Folder hierarchy (Groups) is now supported and the `Groups` dropdown filters Sets by subfolder.
+- Multi-select Cards: select multiple Sets to study or combine; the textarea and session work with all selected files.
 
 ## 🔐 Permissions
 - Chrome will prompt to grant folder access.
@@ -68,6 +69,13 @@ Excuse me
 - Tap JP area to increase font, EN area to decrease.
 - In Scroll mode, use arrows to move between items, and A/B/R to loop range.
 - Car Mode toggled via 🚗/🏠 icon.
+- Multi-select Cards via the dropdown to study combined Sets; the header shows combined count (e.g. Combined (2 / 20)).
+
+## 💾 Saving
+- Use the 💾 Save button to write changes explicitly.
+- Save works for single or multiple selected Sets.
+- When combining multiple Sets, Save creates a new file in the current Group.
+- When editing a single Set, Save overwrites if the NAME header is unchanged, or creates a new file if renamed.
 
 ## 📄 License
 MIT License © 2025
