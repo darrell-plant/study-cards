@@ -48,15 +48,14 @@
       cursor: pointer;
       text-align:center;
     }
-
     .exitBtn {
-      background: #6f0a0a;
-      color: #facc15;
-      border: 2px solid #f3a404a3;
-      font-weight: bold;
+        background: #facc15;
+        color: #3b0707;
+        border: 2px solid #f3a404a3;
+        font-weight: bold;
     }
     .exitBtn:hover {
-      background: #891212;
+      background: #f3a404a3;
     }
 
     #timerBtn.topBtn {
@@ -136,6 +135,12 @@
     .marqueeWrap{display:flex;flex-direction:column;height:100vh;padding:1rem;box-sizing:border-box}
     #marqueeViewport{flex:2;min-height:66vh;background:#0f1722;border:1px solid #243244;border-radius:12px;overflow:hidden;display:flex;align-items:center;position:relative}
     #marqueeRepeat{position:absolute;top:6px;left:10px;font-size:2rem;font-weight:700;color:#facc15;opacity:.95;user-select:none}
+    #marqueeIndex{
+      position:absolute; top:6px; right:10px;
+      font-size:2rem; font-weight:700;
+      color:#facc15; opacity:.95; user-select:none;
+      display:none; /* hidden by default; shown for multi */
+    }
     #marqueeText{white-space:nowrap;will-change:transform;display:inline-block;padding:0 2rem;font-weight:600;color:#facc15}
     .marqueeControls{flex:1;display:flex;gap:.5rem;align-items:center;justify-content:center}
     .ctrlBtn{
@@ -248,6 +253,7 @@ Excuse me"></textarea><br>
         <div id="marqueeViewport">
           <div id="marqueeText" style="font-size:72px;"></div>
           <div id="marqueeRepeat" title="Repeats per item">3</div>
+          <div id="marqueeIndex"  title="Position"></div>
         </div>
         <div class="marqueeControls">
           <button id="fontDownBtn" class="ctrlBtn">A−</button>
@@ -1017,25 +1023,25 @@ Excuse me"></textarea><br>
     function showLineAt(i){
       if(!marquee.lines.length) return;
       marquee.cursor = (i+marquee.lines.length) % marquee.lines.length;
-      // When we land on an item, reset remaining to full count
+
+      // reset repeats & counters
       marquee.repeatRemaining = marquee.repeatMax;
       updateRepeatCounterDisplay();
+      updateMarqueeIndexDisplay(); // <-- add this
 
       const doOnePass = ()=>{
         updateRepeatCounterDisplay();
         playMarqueeLine(marquee.lines[marquee.cursor], ()=>{
           if(!marquee.running) return;
-          // One pass completed
           if(marquee.repeatRemaining > 1){
             marquee.repeatRemaining--;
             updateRepeatCounterDisplay();
-            // Repeat same item again
-            doOnePass();
+            doOnePass(); // repeat same item
           } else {
-            // Move to next item and reset counter
             marquee.cursor = nextIndex();
             marquee.repeatRemaining = marquee.repeatMax;
             updateRepeatCounterDisplay();
+            updateMarqueeIndexDisplay(); // <-- update when advancing to next line
             doOnePass();
           }
         });
@@ -1056,6 +1062,21 @@ Excuse me"></textarea><br>
       // Stop any current transition cleanly
       const el = $('marqueeText');
       el.style.transition = 'none';
+    }
+
+    function updateMarqueeIndexDisplay(){
+      const el = $('marqueeIndex');
+      if(!el) return;
+      const total = marquee.lines.length|0;
+      if(total <= 1){
+        el.style.display = 'none';
+        return;
+      }
+      const idx = ((marquee.cursor % total) + total) % total; // safe 0..total-1
+      el.textContent = `${idx+1} / ${total}`;
+      el.style.display = 'block';
+      // match marquee text color
+      try{ el.style.color = getComputedStyle($('marqueeText')).color; }catch{}
     }
 
     // Build JP list for a slug (reads file, parses pairs)
@@ -1100,6 +1121,12 @@ Excuse me"></textarea><br>
       updateABButtonLabel();
       marquee.repeatRemaining = marquee.repeatMax;
       updateRepeatCounterDisplay();
+
+      // show/hide index badge & set initial text
+      const idxEl = $('marqueeIndex');
+      if (idxEl) idxEl.style.display = multi ? 'block' : 'none';
+      updateMarqueeIndexDisplay();
+
       showMarqueeScreen();
       // Hide repeat counter if only one line
       const repeatEl = $('marqueeRepeat');
