@@ -1,9 +1,9 @@
 # Study Cards
 
-An offline-first Progressive Web App (PWA) for practising Japanese–English sentence pairs.
+An offline-first (Android-only) Progressive Web App (PWA) for practising Japanese–English sentence pairs.
 
 ## ✨ Features
-- 📱 **Installable PWA**: Works offline on mobile and desktop via Chrome.
+- 📱 **Installable PWA**: Works offline on Android mobile and desktop via Chrome.
 - 📂 **Folder access**: Choose a local folder to store your `.data` files (plain text sentence pairs).
 - 🔌 **Reconnect**: Reconnect to a previously chosen folder after restart.
 - 🔄 **Sync library**: Download/update sets from the online `library/` hosted in this repo.
