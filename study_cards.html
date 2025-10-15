@@ -48,6 +48,17 @@
       cursor: pointer;
       text-align:center;
     }
+
+    .exitBtn {
+      background: #6f0a0a;
+      color: #facc15;
+      border: 2px solid #f3a404a3;
+      font-weight: bold;
+    }
+    .exitBtn:hover {
+      background: #891212;
+    }
+
     #timerBtn.topBtn {
       min-width:58px;
     }
@@ -211,8 +222,8 @@ Excuse me"></textarea><br>
       <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
         <div id="progress"></div>
         <div>
+          <button id="backBtnTop" class="topBtn exitBtn" title="Exit Session">Exit</button>
           <button id="reverseBtn" class="topBtn" title="Flip JP↔EN for this session">EN</button>
-          <button id="backBtnTop" class="topBtn">New</button>
           <button id="shuffleTopBtn" class="topBtn">Mix</button>
           <button id="timerBtn" class="topBtn" title="Auto reveal/advance">0s</button>
         </div>
@@ -1511,17 +1522,22 @@ Excuse me"></textarea><br>
     }
 
     async function back(){
+      // Stop any timers
       cancelCardTimers();
+
+      // Hide session UI, show home
       $('sessionCard').style.display='none';
       $('actionBar').style.display='none';
       document.body.classList.remove('hasBar');
       $('inputCard').style.display='block';
-      $('pairs').value='';
-      if(dirHandle){ $('setSelect').disabled=false; await populateSetSelectFromDir(''); }
-      else { $('setSelect').disabled=true; }
-      $('setSelect').value='';
-      $('startBtn').disabled = true;
-      state.setSlug=''; state.setName='';
+
+      // Re-enable card select if we had disabled it
+      if (dirHandle) $('setSelect').disabled = false;
+
+      // Keep state name/slug as-is; we only leave session mode
+      state.done = false;
+
+      // Ensure buttons reflect current state (enables Scroll, Save, etc.)
       updateStartEnabled();
     }
 
