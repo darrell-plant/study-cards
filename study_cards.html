@@ -489,7 +489,7 @@ Excuse me"></textarea><br>
       dbgSave('Selected slugs', slugs);
       if(slugs.length < 1){
         dbgSave('No Card selected');
-        return;
+        //return;
       }
       // Validate header
       const currentHeader = headerNameFromTextarea();
@@ -508,7 +508,7 @@ Excuse me"></textarea><br>
       dbgSave('Prepared text length', cleanedText.length);
 
       // Compare header to the original card’s display name
-      const selectedSlug = slugs[0];
+      const selectedSlug = (slugs.length < 1) ? "" : slugs[0];
       const baselineDisplay = titleCase(slugToNiceName(selectedSlug));
       const headerDisplay   = titleCase(currentHeader);
       dbgSave('Baseline vs Header', { baselineDisplay, headerDisplay });
