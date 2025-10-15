@@ -8,7 +8,6 @@ const ASSETS = [
   'library/index.json',
   'assets/icon-192.v3.png',
   'assets/icon-512.v3.png',
-  'lib/zingtouch.min.js',
 ];
 
 function toScopedURL(path) {
