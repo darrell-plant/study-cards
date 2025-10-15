@@ -8,7 +8,8 @@
   <meta name="theme-color" content="#0b0f14">
   <!-- Inline SVG favicon to prevent 404s and provide an emoji icon -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎴</text></svg>">
-  
+  <script src="lib/zingtouch.min.js"></script>
+
   <title>Study Cards</title>
   <style>
     :root{ --bar-h: 76px; }
@@ -34,6 +35,12 @@
     button:disabled:hover{ filter:none; }
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
     .card{border:1px solid #333;padding:0.5rem;margin:0rem;border-radius:12px;background:#121922;box-sizing:border-box}
+
+    .reviewItem{ padding:.5rem .6rem; border-bottom:1px solid #263241; }
+    .reviewItem .slug{ color:#93c5fd; font-weight:600; margin-bottom:.2rem; }
+    .reviewItem .jp{ color:#a3e635; }
+    .reviewItem .en{ color:#facc15; }
+
     /* Car mode alters card background */
     body.carMode .card{ background:#570f06; }
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
@@ -221,6 +228,10 @@ Excuse me"></textarea><br>
       <button id="marqueeBtnStart" disabled>Scroll</button>
       <button id="carModeBtn" title="Toggle car mode" aria-label="Toggle car mode">🏠</button>
       <button id="saveBtn" type="button" title="Save to file" aria-label="Save to file" disabled>💾</button>
+      <!-- Review controls (Home only) -->
+      <div class="inline-group" style="margin-top:.5rem">
+        <button id="reviewBtn" class="actionBtn" title="Review difficult cards" aria-label="Review difficult cards">Review</button>
+      </div>
     </div>
 
     <div id="sessionCard" class="card" style="display:none">
@@ -266,6 +277,17 @@ Excuse me"></textarea><br>
           <button id="exitMarqueeBtn" class="ctrlBtn scroll">Exit</button>
         </div>
       </div>
+    </div>
+
+    <div id="reviewCard" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
+        <div id="reviewCount">Difficult: 0</div>
+        <div>
+          <button id="reviewBackBtn" class="topBtn">Back</button>
+          <button id="reviewClearBtn" class="topBtn">Clear</button>
+        </div>
+      </div>
+      <div id="reviewList" class="card" style="max-height:70vh; overflow:auto"></div>
     </div>
 
   </div>
@@ -1205,6 +1227,77 @@ Excuse me"></textarea><br>
       try{ localStorage.setItem(keyForSlug(slug), JSON.stringify(obj)); }catch{}
     }
 
+    const DIFFICULT_KEY = 'sc_difficult_cards';
+    function loadDifficult(){
+      try{ return JSON.parse(localStorage.getItem(DIFFICULT_KEY)||'[]'); }catch{ return []; }
+    }
+    function saveDifficult(list){
+      try{ localStorage.setItem(DIFFICULT_KEY, JSON.stringify(list)); }catch{}
+    }
+    function difficultKey(rec){ return `${rec.slug||'(combined)'}@@${rec.jp}@@${rec.en}`; }
+
+    function markCurrentAsDifficult(){
+      if(!state.cards.length) return;
+      const c = state.cards[state.idx];
+      const jp = (state.promptSide==='jp') ? c.q : c.a;
+      const en = (state.promptSide==='jp') ? c.a : c.q;
+      const rec = {
+        slug: state.setSlug || '(combined)',
+        setName: state.setName || '(Combined)',
+        jp, en, ts: Date.now()
+      };
+      const list = loadDifficult();
+      const seen = new Set(list.map(difficultKey));
+      if(!seen.has(difficultKey(rec))){ list.push(rec); saveDifficult(list); showToast('Marked difficult'); }
+      else { showToast('Already in Difficult'); }
+    }
+
+    function removeCurrentCardFromSession(){
+      if(!state.cards.length) return;
+      state.cards.splice(state.idx,1);
+      if(state.idx >= state.cards.length){ state.idx = Math.max(0, state.cards.length-1); }
+      state.shown = false; state.done = (state.cards.length===0);
+      if(state.done){
+        $('promptArea').textContent='Done!';
+        $('answerArea').textContent='Done!';
+        $('progress').textContent='0/0';
+        $('goBtn').textContent='Restart';
+        cancelCardTimers();
+      } else {
+        updateHUD();
+      }
+    }
+
+    // Review screen
+    function showReviewScreen(){
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='none';
+      $('marqueeCard').style.display='none';
+      $('reviewCard').style.display='block';
+      renderReviewList();
+    }
+    function hideReviewScreen(){
+      $('reviewCard').style.display='none';
+      $('inputCard').style.display='block';
+    }
+    function renderReviewList(){
+      const list = loadDifficult();
+      $('reviewCount').textContent = `Difficult: ${list.length}`;
+      const box = $('reviewList');
+      box.innerHTML = '';
+      if(!list.length){ box.textContent = 'No difficult cards yet.'; return; }
+      for(const rec of list){
+        const div = document.createElement('div');
+        div.className = 'reviewItem';
+        const slug = document.createElement('div'); slug.className='slug'; slug.textContent = rec.setName ? `${rec.setName}` : `${rec.slug||''}`;
+        const jp = document.createElement('div'); jp.className='jp'; jp.textContent = rec.jp||'';
+        const en = document.createElement('div'); en.className='en'; en.textContent = rec.en||'';
+        div.appendChild(slug); div.appendChild(jp); div.appendChild(en);
+        box.appendChild(div);
+      }
+    }
+    function clearReview(){ saveDifficult([]); renderReviewList(); showToast('Cleared'); }
+
     // Unnamed generator using existing files in the chosen folder
     async function nextUnnamed(){
       const files = await listDataFiles();
@@ -1365,6 +1458,7 @@ Excuse me"></textarea><br>
         document.body.classList.add('hasBar');
         updateHUD();
         updateTimerLabel();
+        bindSessionGestures();
         return;
       }
       // ---------- END NEW ----------
@@ -1551,7 +1645,7 @@ Excuse me"></textarea><br>
     async function back(){
       // Stop any timers
       cancelCardTimers();
-
+      unbindSessionGestures();
       // Hide session UI, show home
       $('sessionCard').style.display='none';
       $('actionBar').style.display='none';
@@ -1567,6 +1661,34 @@ Excuse me"></textarea><br>
       // Ensure buttons reflect current state (enables Scroll, Save, etc.)
       updateStartEnabled();
     }
+
+    // ===== Session swipe gestures (ZingTouch) =====
+    let ztRegion = null; let ztUnbind = null;
+    function bindSessionGestures(){
+      try{
+        if(!window.ZingTouch) return; // library not loaded
+        if(ztRegion) return;          // already bound
+        const target = document.querySelector('.viewerBox');
+        if(!target) return;
+        ztRegion = new ZingTouch.Region(target);
+        const handler = (e)=>{
+          const a = (e.detail && typeof e.detail.data[0].currentDirection==='number') ? e.detail.data[0].currentDirection : null;
+          if(a==null) return;
+          // Right: 315..360 or 0..45; Left: 135..225
+          if((a>=315 && a<=360) || (a>=0 && a<=45)){
+            // swipe right → mark difficult
+            markCurrentAsDifficult();
+          } else if(a>=135 && a<=225){
+            // swipe left → remove card
+            removeCurrentCardFromSession();
+          }
+        };
+        ztRegion.bind(target, 'swipe', handler);
+        ztUnbind = ()=>{ try{ ztRegion.unbind(target, 'swipe'); }catch{} ztRegion=null; };
+      }catch{}
+    }
+    function unbindSessionGestures(){ try{ ztUnbind && ztUnbind(); }catch{} ztUnbind=null; ztRegion=null; }
+
 
     function showToast(msg){
       const t=$('toast');
@@ -1651,7 +1773,11 @@ Excuse me"></textarea><br>
     $('speedDownBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec - 20); restartMarqueeWithNewSpeed(); };
     // Marquee repeat counter
     $('marqueeRepeat').onclick = cycleRepeatMax;
-    
+
+    $('reviewBtn').onclick = showReviewScreen;
+    $('reviewBackBtn').onclick = hideReviewScreen;
+    $('reviewClearBtn').onclick = clearReview;
+
     $('timerBtn').onclick = cycleTimer;
     updateTimerLabel();
     // Marquee navigation and A/B loop controls

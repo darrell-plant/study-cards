@@ -1,5 +1,5 @@
 // sw.js
-const CACHE = 'sc-v13';
+const CACHE = 'sc-v14';
 
 // Put only files that truly exist next to sw.js (add icons if you have them)
 const ASSETS = [
@@ -8,6 +8,7 @@ const ASSETS = [
   'library/index.json',
   'assets/icon-192.v3.png',
   'assets/icon-512.v3.png',
+  'lib/zingtouch.min.js',
 ];
 
 function toScopedURL(path) {
@@ -44,17 +45,22 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-
-  // Same-origin only
+  // Handle only same-origin GET requests
+  if (req.method !== 'GET') return;
   if (new URL(req.url).origin !== self.location.origin) return;
 
-  // Try network first, fall back to cache
   event.respondWith(
     fetch(req).then((res) => {
       // Update cache in background
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match(req))
+    }).catch(async () => {
+      // Offline fallback: if it's a navigation, show main HTML
+      if (req.mode === 'navigate') {
+        return caches.match(toScopedURL('study_cards.html'));
+      }
+      return caches.match(req);
+    })
   );
 });
