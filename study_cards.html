@@ -123,7 +123,8 @@
 
     /* ===== Marquee mode ===== */
     .marqueeWrap{display:flex;flex-direction:column;height:100vh;padding:1rem;box-sizing:border-box}
-    #marqueeViewport{flex:2;min-height:66vh;background:#0f1722;border:1px solid #243244;border-radius:12px;overflow:hidden;display:flex;align-items:center}
+    #marqueeViewport{flex:2;min-height:66vh;background:#0f1722;border:1px solid #243244;border-radius:12px;overflow:hidden;display:flex;align-items:center;position:relative}
+    #marqueeRepeat{position:absolute;top:6px;left:10px;font-size:2rem;font-weight:700;color:#facc15;opacity:.95;user-select:none}
     #marqueeText{white-space:nowrap;will-change:transform;display:inline-block;padding:0 2rem;font-weight:600;color:#facc15}
     .marqueeControls{flex:1;display:flex;gap:.5rem;align-items:center;justify-content:center}
     .ctrlBtn{
@@ -181,7 +182,7 @@
       <!-- Cards controls -->
       <div class="inline-group">
         <label for="setSelect">Card</label>
-        <select id="setSelect" multiple size="8" disabled>
+        <select id="setSelect" multiple size="4" disabled>
           <option value="">(none)</option>
         </select>
         <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
@@ -235,6 +236,7 @@ Excuse me"></textarea><br>
       <div class="marqueeWrap">
         <div id="marqueeViewport">
           <div id="marqueeText" style="font-size:72px;"></div>
+          <div id="marqueeRepeat" title="Repeats per item">3</div>
         </div>
         <div class="marqueeControls">
           <button id="fontDownBtn" class="ctrlBtn">A−</button>
@@ -821,10 +823,38 @@ Excuse me"></textarea><br>
       caller: 'start',  // 'start' or 'session'
       fontPx: Math.max(24, +(localStorage.getItem(MARQUEE_FONT_KEY)||72)),
       pxPerSec: Math.max(20, +(localStorage.getItem(MARQUEE_SPEED_KEY)||80)),
+      repeatMax: 3,
+      repeatRemaining: 0,
       currentRAF: null,
       animToken: 0,
       loop: { a: null, b: null, enabled: false, stage: 0 } // stage: 0->set A, 1->set B, 2->enable loop, 3->reset
     };
+    function updateRepeatCounterDisplay(){
+      const el = $('marqueeRepeat');
+      if(!el) return;
+      el.textContent = String(Math.max(1, marquee.repeatRemaining||marquee.repeatMax||3));
+      // Match marquee text color
+      try{ el.style.color = getComputedStyle($('marqueeText')).color; }catch{}
+    }
+
+    function setRepeatMax(n){
+      marquee.repeatMax = Math.max(1, Math.min(10, (n|0)||3));
+      // Reset remaining for current item to full count
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
+    }
+
+    function cycleRepeatMax(){
+      let n = marquee.repeatMax;
+      n = (n % 10) + 1; // 1..10 cycle
+      setRepeatMax(n);
+      // Restart current line to reflect new countdown immediately
+      if(marquee.running && marquee.lines.length){
+        stopMarqueeLoop();
+        marquee.running = true;
+        showLineAt(marquee.cursor);
+      }
+    }
 
     // --- Wake Lock (keep screen on during Marquee) ---
     let wakeLock = null;
@@ -976,10 +1006,31 @@ Excuse me"></textarea><br>
     function showLineAt(i){
       if(!marquee.lines.length) return;
       marquee.cursor = (i+marquee.lines.length) % marquee.lines.length;
-      playMarqueeLine(marquee.lines[marquee.cursor], ()=>{
-        if(!marquee.running) return;
-        showLineAt(nextIndex());
-      });
+      // When we land on an item, reset remaining to full count
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
+
+      const doOnePass = ()=>{
+        updateRepeatCounterDisplay();
+        playMarqueeLine(marquee.lines[marquee.cursor], ()=>{
+          if(!marquee.running) return;
+          // One pass completed
+          if(marquee.repeatRemaining > 1){
+            marquee.repeatRemaining--;
+            updateRepeatCounterDisplay();
+            // Repeat same item again
+            doOnePass();
+          } else {
+            // Move to next item and reset counter
+            marquee.cursor = nextIndex();
+            marquee.repeatRemaining = marquee.repeatMax;
+            updateRepeatCounterDisplay();
+            doOnePass();
+          }
+        });
+      };
+
+      doOnePass();
     }
 
     function startMarqueeLoop(){
@@ -1036,7 +1087,14 @@ Excuse me"></textarea><br>
       ['prevLineBtn','nextLineBtn','abLoopBtn'].forEach(id=>$(id).style.display = multi ? '' : 'none');
       marquee.loop = { a:null, b:null, enabled:false, stage:0 };
       updateABButtonLabel();
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
       showMarqueeScreen();
+      // Hide repeat counter if only one line
+      const repeatEl = $('marqueeRepeat');
+      if (repeatEl) {
+        repeatEl.style.display = marquee.lines.length > 1 ? 'block' : 'none';
+      }
       startMarqueeLoop();
     }
 
@@ -1057,7 +1115,14 @@ Excuse me"></textarea><br>
       ['prevLineBtn','nextLineBtn','abLoopBtn'].forEach(id=>$(id).style.display = multi ? '' : 'none');
       marquee.loop = { a:null, b:null, enabled:false, stage:0 };
       updateABButtonLabel();
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
       showMarqueeScreen();
+      // Hide repeat counter if only one line
+      const repeatEl = $('marqueeRepeat');
+      if (repeatEl) {
+        repeatEl.style.display = marquee.lines.length > 1 ? 'block' : 'none';
+      }
       startMarqueeLoop();
     }
 
@@ -1541,6 +1606,9 @@ Excuse me"></textarea><br>
     $('fontDownBtn').onclick = () => setMarqueeFont(marquee.fontPx - 4);
     $('speedUpBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec + 20); restartMarqueeWithNewSpeed(); };
     $('speedDownBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec - 20); restartMarqueeWithNewSpeed(); };
+    // Marquee repeat counter
+    $('marqueeRepeat').onclick = cycleRepeatMax;
+    
     $('timerBtn').onclick = cycleTimer;
     updateTimerLabel();
     // Marquee navigation and A/B loop controls
