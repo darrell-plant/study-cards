@@ -287,6 +287,7 @@ Excuse me"></textarea><br>
         <div>
           <button id="reviewBackBtn" class="topBtn">Back</button>
           <button id="reviewClearBtn" class="topBtn">Clear</button>
+          <button id="reviewExportBtn" class="topBtn" title="Copy difficult cards to clipboard">Export</button>
         </div>
       </div>
       <div id="reviewList" class="card" style="max-height:70vh; overflow:auto"></div>
@@ -1701,9 +1702,11 @@ Excuse me"></textarea><br>
           if (Math.max(adx,ady) < 36 || dt > 700) return; // small/slow -> ignore
           if (adx <= ady) return; // vertical-dominant -> ignore
           if (dx > 0){
-            // RIGHT: mark difficult
+            // RIGHT: mark difficult, then remove from session
             const added = markCurrentAsDifficult();
-            showToast(added ? 'Added to Difficult' : 'Already added');
+            showToast(added ? 'Added to Difficult & removed' : 'Already added — removed');
+            cancelCardTimers();
+            removeCurrentCardFromSession();
           } else {
             // LEFT: remove from session
             showToast('Removed from session');
@@ -1733,6 +1736,49 @@ Excuse me"></textarea><br>
       t.classList.add('show');
       clearTimeout(showToast._timer);
       showToast._timer=setTimeout(()=>t.classList.remove('show'), 1600);
+    }
+
+    // ----- Clipboard helper (Android/PWA friendly) -----
+    async function copyToClipboard(text){
+      if(!text) return false;
+      try{
+        if(navigator.clipboard?.writeText){
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      }catch{}
+      // Fallback for older engines
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      let ok=false; try{ ok=document.execCommand('copy'); }catch{}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    function formatNowStamp(){
+      const d = new Date();
+      const pad = (n)=> String(n).padStart(2,'0');
+      const yyyy = d.getFullYear();
+      const mm   = pad(d.getMonth()+1);
+      const dd   = pad(d.getDate());
+      const hh   = pad(d.getHours());
+      const mi   = pad(d.getMinutes());
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    }
+
+    async function exportReview(){
+      const list = loadDifficult();
+      if(!list || !list.length){ showToast('No difficult cards'); return; }
+      // Build Study Cards format text
+      const header = `Name: Reviews ${formatNowStamp()}`;
+      const body = list.map(r=>`${r.jp || ''}\n${r.en || ''}`).join('\n\n');
+      const txt = `${header}\n\n${body}\n`;
+      const ok = await copyToClipboard(txt);
+      showToast(ok ? `Copied ${list.length} pairs` : 'Copy failed');
     }
 
     function showBusy(msg){
@@ -1814,6 +1860,7 @@ Excuse me"></textarea><br>
     $('reviewBtn').onclick = showReviewScreen;
     $('reviewBackBtn').onclick = hideReviewScreen;
     $('reviewClearBtn').onclick = clearReview;
+    $('reviewExportBtn').onclick = exportReview;
 
     $('timerBtn').onclick = cycleTimer;
     updateTimerLabel();
