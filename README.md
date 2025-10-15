@@ -13,6 +13,9 @@ An offline-first Progressive Web App (PWA) for practising Japanese–English sen
 - 🚗 **Car Mode**: Larger fonts, timed reveal, and hands-free operation.
 - 🎞 **Scroll Mode**: Continuous large-text marquee display for reading or group viewing.
 - 📊 **Progress & Save system**: Tracks your current progress and direction (JP→EN / EN→JP). Explicit Save (💾) allows overwriting or creating new combined sets.
+- 👆 **Swipe actions**: Swipe left to remove a card from the current session, swipe right to mark it as *Difficult* (and remove it).
+- 🧠 **Review system**: Difficult cards are stored for later review. Access them via the *Review* button on the Home screen.
+- 💾 **Export & New Deck**: On the Review screen, use **Export** to copy Difficult cards to the clipboard in Study Cards format, or **New Deck** to instantly create a new deck in memory from Difficult cards.
 
 ## 📝 Deck file format
 Each set is a plain text file with extension `.data`:
@@ -70,6 +73,8 @@ Excuse me
 - In Scroll mode, use arrows to move between items, and A/B/R to loop range.
 - Car Mode toggled via 🚗/🏠 icon.
 - Multi-select Cards via the dropdown to study combined Sets; the header shows combined count (e.g. Combined (2 / 20)).
+- Swipe left ⬅️ remove card; Swipe right ➡️ add to Difficult list and remove from session.
+- Review Difficult cards anytime: Home → Review → (Export or New Deck).
 
 ## 💾 Saving
 - Use the 💾 Save button to write changes explicitly.
