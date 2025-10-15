@@ -291,6 +291,9 @@ Excuse me"></textarea><br>
         </div>
       </div>
       <div id="reviewList" class="card" style="max-height:70vh; overflow:auto"></div>
+      <div class="row" style="justify-content:center; margin-top:.6rem">
+        <button id="reviewNewDeckBtn" class="topBtn" title="Create new deck from Difficult">New Deck</button>
+      </div>
     </div>
 
   </div>
@@ -1583,11 +1586,11 @@ Excuse me"></textarea><br>
       $('marqueeBtnStart').disabled = !hasSet; // Scroll-from-home needs at least one set
 
       // Save enabled when:
-      // - at least one card is selected (single or multi)
       // - NAME header exists (non-blank)
       // - textarea has any content
       const headerOk = !!headerNameFromTextarea();
-      const enableSave = hasSet && headerOk && hasText;
+      // Allow saving new decks from pasted text even with no Card selected
+      const enableSave = headerOk && hasText;
       const sb = $('saveBtn');
       if(sb) sb.disabled = !enableSave;
     }
@@ -1781,6 +1784,62 @@ Excuse me"></textarea><br>
       showToast(ok ? `Copied ${list.length} pairs` : 'Copy failed');
     }
 
+    async function readClipboardText(){
+      try{
+        if(navigator.clipboard?.readText){
+          const t = await navigator.clipboard.readText();
+          return t || '';
+        }
+      }catch{}
+      return '';
+    }
+
+    function ensureNameHeader(text){
+      text = String(text||'');
+      // strip leading whitespace
+      text = text.replace(/^\s+/, '');
+      // already has NAME header?
+      if(/^\s*name\s*:/i.test(text)){
+        // normalize to exactly one blank line after header
+        return text.replace(/^(NAME:.*?)(\r?\n\s*)+?/im, '$1\n\n');
+      }
+      return `NAME: New Deck\n\n${text}`;
+    }
+
+    async function newDeckFromClipboard(){
+      // Build from Difficult list (no clipboard needed)
+      const list = loadDifficult();
+      if(!list || !list.length){ showToast('No difficult cards'); return; }
+
+      const header = `NAME: Reviews ${formatNowStamp()}`;
+      const body = list.map(r=>`${r.jp||''}\n${r.en||''}`).join('\n\n');
+      const txt = `${header}\n\n${body}\n`;
+
+      // Go to Home page
+      $('reviewCard').style.display='none';
+      $('sessionCard').style.display='none';
+      $('marqueeCard').style.display='none';
+      $('inputCard').style.display='block';
+      document.body.classList.remove('hasBar');
+
+      // Select <base> group if groups visible
+      const gsel = $('groupSelect');
+      if(gsel && !gsel.disabled){
+        gsel.value = '__base__';
+        currentGroup = '__base__';
+        try{ localStorage.setItem('sc_selected_group', currentGroup); }catch{}
+        await populateSetSelectFromDir('');
+      }
+
+      // Clear Card selection and populate textarea
+      const ssel = $('setSelect');
+      if(ssel){ ssel.value = ''; }
+      $('pairs').value = txt;
+      updateStartEnabled();
+      showToast(`Loaded ${list.length} pairs`);
+      $('pairs').focus();
+    }
+  
     function showBusy(msg){
       const b=$('busy'); const m=$('busyMsg');
       if(m) m.textContent = msg || 'Working…';
@@ -1861,6 +1920,7 @@ Excuse me"></textarea><br>
     $('reviewBackBtn').onclick = hideReviewScreen;
     $('reviewClearBtn').onclick = clearReview;
     $('reviewExportBtn').onclick = exportReview;
+    $('reviewNewDeckBtn').onclick = newDeckFromClipboard;
 
     $('timerBtn').onclick = cycleTimer;
     updateTimerLabel();
