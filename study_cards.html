@@ -304,6 +304,7 @@ Excuse me"></textarea><br>
     <div class="modalBox"><span class="spinner" aria-hidden="true"></span><span id="busyMsg">Downloading…</span></div>
   </div>
 
+  <script src="js/idb-driver.js"></script>
   <script>
     // ---- Driver selection (FS vs IDB) ----
     const qs = new URLSearchParams(location.search);
@@ -334,24 +335,13 @@ Excuse me"></textarea><br>
       async deleteFile(path){ /* current file delete */ },
     };
 
-    const idbDriver = {
-      name: 'idb',
-      async init(){ showToast('IDB mode (preview)'); },
-      async syncFromManifest(url){ showToast('Sync (IDB) coming soon'); },
-      async listGroups(){ return ['__base__']; },
-      async listFiles(group){ return []; },
-      async readFile(path){ throw new Error('IDB read not implemented yet'); },
-      async writeFile(path, text){ showToast('Save (IDB) coming soon'); },
-      async deleteFile(path){ showToast('Delete (IDB) coming soon'); },
-    };
-
     const storage = (DRIVER === 'fs') ? fsDriver : idbDriver;
 
     const $=id=>document.getElementById(id);
 
     // --- File System Access API (Chrome) ---
     // ---- DEBUG SAVE helper ----
-    const DEBUG_SAVE = true;
+    const DEBUG_SAVE = false;
     function dbgSave(msg, extra){
       try{ console.log('[SAVE]', msg, extra||''); }catch{}
       if(DEBUG_SAVE){ try{ showToast(String(msg)); }catch{} }
@@ -361,6 +351,9 @@ Excuse me"></textarea><br>
     const BASE_GROUP = "__base__";  // UI shows as <base>
     let currentGroup = BASE_GROUP;
     const EXT = '.data';            // deck file extension
+
+    // Map slug -> stored IDB path (e.g., "miku/000_test.data")
+    const idbPathBySlug = new Map();
 
     // Car mode (not persisted); affects single-panel threshold and default font
     let carMode = false; // default non-car on startup
@@ -474,6 +467,13 @@ Excuse me"></textarea><br>
     }
 
     async function listDataFiles(group = currentGroup){
+      if (DRIVER === 'idb') {
+        const items = await storage.listFiles(group);
+        // Adapt to existing shape: {name, handle}
+        // We only use .name downstream, so a dummy handle is fine.
+        return items.map(it => ({ name: it.name, handle: null, _path: it.path, _display: it.display }));
+      }
+
       if(!dirHandle) return [];
       const base = await getGroupDirHandle(group);
       if(!base) return [];
@@ -695,7 +695,6 @@ Excuse me"></textarea><br>
     // --- Sync Library (repo) into chosen folder ---
     async function syncLibraryIntoFolder(){
         showBusy('Downloading sentences...');
-        showToast('Downloading sentences...');
         try{
           if(!dirHandle){
           const picked = await chooseSentencesFolder();
@@ -798,28 +797,64 @@ Excuse me"></textarea><br>
       const sel = $('groupSelect');
       const prevGroup = currentGroup;
 
+      // ===== IDB driver: list groups from IndexedDB =====
+      if (DRIVER === 'idb') {
+        try{
+          const groups = await storage.listGroups(); // e.g., ['__base__','miku',...]
+          const hasSub = groups.some(g => g !== BASE_GROUP);
+
+          if(!hasSub){
+            // No subfolders in IDB → hide row, lock to <base>
+            row.style.display='none';
+            sel.disabled = true;
+            sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+            currentGroup = BASE_GROUP;
+          } else {
+            row.style.display='';
+            sel.disabled = false;
+            sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+            for(const g of groups){
+              if(g === BASE_GROUP) continue;
+              const opt = document.createElement('option');
+              opt.value = g;
+              opt.textContent = truncateString(g);
+              opt.title = g;
+              sel.appendChild(opt);
+            }
+            const saved = localStorage.getItem(SELECTED_GROUP_KEY) || prevGroup || BASE_GROUP;
+            const names = new Set(groups);
+            const toSet = names.has(saved) ? saved : BASE_GROUP;
+            sel.value = toSet;
+            currentGroup = toSet;
+          }
+
+          if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
+          return; // important: don't fall through to FS branch
+        }catch(e){
+          console.warn('[idb] populateGroupSelect failed', e);
+          // fall through to FS branch if something went wrong
+        }
+      }
+
+      // ===== FS driver (existing behavior) =====
       if(!dirHandle){
         row.style.display='none';
         sel.disabled=true;
         currentGroup = BASE_GROUP;
-        // If group changed, ensure Cards list refreshes
         if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
         return;
       }
 
       const dirs = await listSubdirs();
       if(!dirs.length){
-        // No subfolders: hide groups UI and lock to <base>
         row.style.display='none';
         sel.disabled=true;
         currentGroup = BASE_GROUP;
         sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
-        // Proactively refresh Cards when switching to base
         if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
         return;
       }
 
-      // There are subfolders: show row and populate list
       row.style.display='';
       sel.disabled = false;
       const prev = sel.value || currentGroup || BASE_GROUP;
@@ -828,7 +863,7 @@ Excuse me"></textarea><br>
         const opt = document.createElement('option');
         opt.value = d.name;
         opt.textContent = truncateString(d.name);
-        opt.title = d.name; // show full name on hover
+        opt.title = d.name;
         sel.appendChild(opt);
       }
       const names = new Set([BASE_GROUP, ...dirs.map(d=>d.name)]);
@@ -836,25 +871,35 @@ Excuse me"></textarea><br>
       sel.value = toSet;
       currentGroup = toSet;
 
-      // If group changed due to rebuild, refresh Cards
       if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
     }
 
     async function populateSetSelectFromDir(selectedSlug=''){
+      idbPathBySlug.clear();
       const sel=$('setSelect');
       const currentVal = sel.value;
       sel.innerHTML='<option value="">(none)</option>';
       const files = await listDataFiles(currentGroup);
-      const items = files.map(f=>{ const slug = slugFromFilename(f.name); return { slug, display: titleCase(slugToNiceName(slug)) }; });
+      
+      const items = files.map(f=>{
+        const slug = slugFromFilename(f.name);
+        const display = f._display ? f._display : titleCase(slugToNiceName(slug));
+        const path = f._path || f.path || null; // <-- pick up real IDB key if provided
+        return { slug, display, _path: path };
+      });
+
       const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
       items.sort((a,b)=>coll.compare(a.display,b.display)||a.slug.localeCompare(b.slug));
-      for (const {slug, display} of items){
+
+      for (const {slug, display, _path} of items){
         const opt = document.createElement('option');
         opt.value = slug;
         opt.textContent = truncateString(display);
         opt.title = display;
         sel.appendChild(opt);
+        if (_path) idbPathBySlug.set(slug, _path);   // <-- will now be set correctly
       }
+
       const toSet = selectedSlug || (items.some(i=>i.slug===currentVal)? currentVal : '');
       sel.value = toSet;
       sel.disabled = false;
@@ -872,10 +917,20 @@ Excuse me"></textarea><br>
 
     // Read one deck’s text (raw file) and return parsed pairs (header ignored).
     async function readDeckPairsForSlug(slug){
+      if (DRIVER === 'idb') {
+        const filename = filenameFromSlug(slug);
+        const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+        const stored   = idbPathBySlug.get(slug);
+        const path     = stored || computed;
+        const raw = await storage.readFile(path);
+        const txt = await normalizeReadResult(raw);
+        return parsePairs(txt);
+      }
+      // FS path (unchanged)
       const base = await getGroupDirHandle(currentGroup);
       const fh   = await base.getFileHandle(filenameFromSlug(slug));
       const txt  = await readFileText(fh);
-      return parsePairs(txt); // parsePairs ignores a first-line NAME:
+      return parsePairs(txt);
     }
 
     // Build a combined textarea text and pairs for N slugs.
@@ -1149,12 +1204,23 @@ Excuse me"></textarea><br>
       try{ el.style.color = getComputedStyle($('marqueeText')).color; }catch{}
     }
 
-    // Build JP list for a slug (reads file, parses pairs)
     async function getJPListForSlug(slug){
-      if(!dirHandle) return [];
       try{
+        if (DRIVER === 'idb') {
+          const filename = filenameFromSlug(slug);
+          const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+          const stored   = idbPathBySlug.get(slug);
+          const path     = stored || computed;
+
+          const raw = await storage.readFile(path);
+          const t   = await normalizeReadResult(raw);
+          const pairs = parsePairs(t);
+          return pairs.map(p=>p[0]).filter(Boolean);
+        }
+        if(!dirHandle) return [];
         const base = await getGroupDirHandle(currentGroup);
-        const fh = await base.getFileHandle(filenameFromSlug(slug));        const t = await readFileText(fh);
+        const fh = await base.getFileHandle(filenameFromSlug(slug));
+        const t = await readFileText(fh);
         const pairs = parsePairs(t);
         return pairs.map(p=>p[0]).filter(Boolean);
       }catch{
@@ -1163,8 +1229,6 @@ Excuse me"></textarea><br>
     }
 
     async function startMarqueeFromSelected(){
-      if (DRIVER === 'idb') { showToast('IDB mode: read-only preview'); return; }
-
       const slugs = getSelectedSlugs();
       if(!slugs.length) return;
 
@@ -1494,10 +1558,9 @@ Excuse me"></textarea><br>
     function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
 
     async function startSession(){
-      if (DRIVER === 'idb') { showToast('IDB mode: read-only preview'); return; }
-      
-      if(!dirHandle){ await chooseSentencesFolder(); if(!dirHandle) return; }
-
+      if (DRIVER === 'fs') {
+        if(!dirHandle){ await chooseSentencesFolder(); if(!dirHandle) return; }
+      }
       const userText = $('pairs').value.trim();
       const lines = userText.split(/\r?\n/);
       const m = (lines[0]||'').match(/^\s*name:\s*(.+)/i);
@@ -1770,7 +1833,7 @@ Excuse me"></textarea><br>
 
       for(const el of targets){ attach(el); }
       unbindSwipe = ()=>{ for(const off of listeners){ try{off();}catch{} } };
-      console.log('[swipe] Pointer listeners bound on', targets.length, 'panels');
+      //console.log('[swipe] Pointer listeners bound on', targets.length, 'panels');
     }
 
     function unbindSessionGestures(){
@@ -1944,9 +2007,26 @@ Excuse me"></textarea><br>
       ensureFolderAccessInteractive();
     }; // try stored handle
 
-    $('syncLibraryBtn').onclick = () => {
-      if (DRIVER === 'idb') { showToast('IDB mode: library sync coming soon'); return; }
-      syncLibraryIntoFolder();            // refresh from library
+    $('syncLibraryBtn').onclick = async () => {
+      if (DRIVER === 'idb') {
+        showBusy('Downloading library…');
+        try{
+          await storage.init();
+          const r = await storage.syncFromManifest('library/index.json');
+          showToast(`Synced: ${r.wrote} files${r.errors?`, ${r.errors} errors`:''}`);
+          // Refresh Groups & Cards from IDB
+          await populateGroupSelect();
+          await populateSetSelectFromDir('');
+        }catch(e){
+          console.warn(e);
+          showToast('IDB sync failed');
+        } finally {
+          hideBusy();
+        }
+        return;
+      }
+      // FS mode
+      syncLibraryIntoFolder();
     };
 
     $('marqueeBtnStart').onclick = startMarqueeFromSelected;
@@ -1961,11 +2041,68 @@ Excuse me"></textarea><br>
       saveCurrentTextareaToFile();
       setTimeout(updateStartEnabled, 0);
     });
-    console.log('[SAVE] saveBtn handler attached (addEventListener)');
-    // TEMP: global click logger for the Save button (will be removed later)
-    (document.getElementById('saveBtn'))?.addEventListener('click', ()=>{
-      console.log('[SAVE] saveBtn received a click (post-bind)');
-    });
+
+    async function normalizeReadResult(v){
+      if (typeof v === 'string') return v;
+      if (v && typeof v.text === 'string') return v.text;
+      return ''; // treat anything else as empty
+    }
+
+    async function loadSelectedCardsIntoTextarea(){
+      const slugs = getSelectedSlugs();
+
+      // Nothing selected
+      if (!slugs.length){
+        $('pairs').value = '';
+        updateStartEnabled();
+        return;
+      }
+
+      // Multi-select → combine
+      if (slugs.length > 1){
+        const { text } = await buildCombinedFromSelected(slugs);
+        $('pairs').value = text;
+        updateStartEnabled();
+        return;
+      }
+
+      // Single selection → load raw text from storage
+      const slug = slugs[0];
+      const filename = filenameFromSlug(slug);
+
+      let text = '';
+      try{
+        if (DRIVER === 'idb'){
+          // Prefer exact path from IDB listing
+          const stored = idbPathBySlug.get(slug);
+          const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+          const path = stored || computed;
+          const raw = await storage.readFile(path);
+          text = await normalizeReadResult(raw);
+        } else {
+          const base = await getGroupDirHandle(currentGroup);
+          const fh = await base.getFileHandle(filename);
+          text = await readFileText(fh);
+        }
+      }catch(e){
+        alert('Failed to read file. Did it move or get renamed?');
+        console.warn('[read]', e);
+        $('pairs').value = '';
+        updateStartEnabled();
+        return;
+      }
+
+      // Ensure a NAME header exists; if not, synthesize from slug
+      if (!/^\s*name\s*:/i.test(text)) {
+        const display = titleCase(slugToNiceName(slug));
+        text = `NAME: ${display}\n\n${text}`;
+      }
+
+      $('pairs').value = text;
+      updateStartEnabled();
+    }
+    // Bind the loader
+    $('setSelect').addEventListener('change', loadSelectedCardsIntoTextarea);
     $('marqueeBtnSession').onclick = startMarqueeFromSession;
     $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); hideMarqueeScreen(); };
     $('fontUpBtn').onclick = () => setMarqueeFont(marquee.fontPx + 4);
@@ -2025,46 +2162,6 @@ Excuse me"></textarea><br>
     setMarqueeFont(marquee.fontPx);
     setMarqueeSpeed(marquee.pxPerSec);
 
-    // Load selected set into textarea
-    $('setSelect').onchange = async function(){
-      const slugs = getSelectedSlugs();
-
-      // If "(none)" was clicked, clear selection entirely (no mixed state)
-      if(this.selectedOptions.length === 0 || (this.selectedOptions.length === 1 && this.selectedOptions[0].value === '')){
-        this.value = ''; // clear
-        $('pairs').value = '';
-        updateStartEnabled();
-        return;
-      }
-
-      if(slugs.length === 1){
-        // Single deck: load as before, normalize top
-        try{
-          const base = await getGroupDirHandle(currentGroup);
-          const fh = await base.getFileHandle(filenameFromSlug(slugs[0]));
-          let t = await readFileText(fh);
-          const name = titleCase(slugToNiceName(slugs[0]));
-          const pairs = parsePairs(t);
-          t = normalizeDeckTop(t, name, 1, pairs.length);
-          $('pairs').value = t;
-          try{ localStorage.setItem(SELECTED_CARD_KEY, slugs[0]); }catch{}
-        }catch(err){
-          alert('Failed to read file. Did it move or get renamed?');
-          try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-          await populateSetSelectFromDir('');
-        }
-        updateStartEnabled();
-        return;
-      }
-
-      // Multiple decks: build combined view
-      const { text } = await buildCombinedFromSelected(slugs);
-      $('pairs').value = text;
-      // Do NOT persist SELECTED_CARD_KEY for multi-selection (ambiguous)
-      try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-      updateStartEnabled();
-    };
-
     function normalizeDeckTop(text, defaultName = "Example", setsCount = null, pairCount = null) {
       // 1) strip all leading whitespace/newlines
       text = String(text || '').replace(/^\s+/, "");
@@ -2123,13 +2220,27 @@ Excuse me"></textarea><br>
     (async function init(){
       $('setSelect').disabled = true;
 
-      // IDB preview: don’t touch FS handles yet
       if (DRIVER === 'idb') {
+        try{
+          await storage.init();
+          // First visit? Pull library into IDB.
+          // (You can skip auto-sync if you prefer manual-only.)
+          try{
+            await storage.syncFromManifest('library/index.json');
+          }catch(e){
+            console.warn('[idb] initial sync failed', e);
+          }
+          await populateGroupSelect();
+          await populateSetSelectFromDir('');
+          showToast('IDB mode ready');
+        }catch(e){
+          console.warn(e);
+          showToast('IDB init failed');
+        }
         updateStartEnabled();
         setCarMode(false);
         applyViewFont();
         updateViewerLayout();
-        showToast('IDB mode (preview): folder actions disabled');
         return;
       }
 

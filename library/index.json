@@ -2,6 +2,7 @@
   "version": "2025-10-13T13:53:26Z",
   "files": [
     { "path": "000_test.data" }
+    ,{ "path": "001_ascii.data" }
     ,{ "path": "miku/No_33_shi.data" }
     ,{ "path": "miku/No_35_-youninatta.data" }
     ,{ "path": "miku/No_36_Potential_youni.data" }
