@@ -341,7 +341,7 @@ Excuse me"></textarea><br>
 
     // --- File System Access API (Chrome) ---
     // ---- DEBUG SAVE helper ----
-    const DEBUG_SAVE = true;
+    const DEBUG_SAVE = false;
     function dbgSave(msg, extra){
       try{ console.log('[SAVE]', msg, extra||''); }catch{}
       if(DEBUG_SAVE){ try{ showToast(String(msg)); }catch{} }
@@ -351,6 +351,9 @@ Excuse me"></textarea><br>
     const BASE_GROUP = "__base__";  // UI shows as <base>
     let currentGroup = BASE_GROUP;
     const EXT = '.data';            // deck file extension
+
+    // Map slug -> stored IDB path (e.g., "miku/000_test.data")
+    const idbPathBySlug = new Map();
 
     // Car mode (not persisted); affects single-panel threshold and default font
     let carMode = false; // default non-car on startup
@@ -692,7 +695,6 @@ Excuse me"></textarea><br>
     // --- Sync Library (repo) into chosen folder ---
     async function syncLibraryIntoFolder(){
         showBusy('Downloading sentences...');
-        showToast('Downloading sentences...');
         try{
           if(!dirHandle){
           const picked = await chooseSentencesFolder();
@@ -873,6 +875,7 @@ Excuse me"></textarea><br>
     }
 
     async function populateSetSelectFromDir(selectedSlug=''){
+      idbPathBySlug.clear();
       const sel=$('setSelect');
       const currentVal = sel.value;
       sel.innerHTML='<option value="">(none)</option>';
@@ -880,20 +883,23 @@ Excuse me"></textarea><br>
       
       const items = files.map(f=>{
         const slug = slugFromFilename(f.name);
-        // If IDB provided a nicer display, use it; otherwise derive from slug
         const display = f._display ? f._display : titleCase(slugToNiceName(slug));
-        return { slug, display, _path: f._path || null };
+        const path = f._path || f.path || null; // <-- pick up real IDB key if provided
+        return { slug, display, _path: path };
       });
 
       const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
       items.sort((a,b)=>coll.compare(a.display,b.display)||a.slug.localeCompare(b.slug));
-      for (const {slug, display} of items){
+
+      for (const {slug, display, _path} of items){
         const opt = document.createElement('option');
         opt.value = slug;
         opt.textContent = truncateString(display);
         opt.title = display;
         sel.appendChild(opt);
+        if (_path) idbPathBySlug.set(slug, _path);   // <-- will now be set correctly
       }
+
       const toSet = selectedSlug || (items.some(i=>i.slug===currentVal)? currentVal : '');
       sel.value = toSet;
       sel.disabled = false;
@@ -912,10 +918,12 @@ Excuse me"></textarea><br>
     // Read one deck’s text (raw file) and return parsed pairs (header ignored).
     async function readDeckPairsForSlug(slug){
       if (DRIVER === 'idb') {
-        // Build the stored path: "<group>/<filename>" or just "filename" for base
         const filename = filenameFromSlug(slug);
-        const path = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
-        const txt = await storage.readFile(path);
+        const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+        const stored   = idbPathBySlug.get(slug);
+        const path     = stored || computed;
+        const raw = await storage.readFile(path);
+        const txt = await normalizeReadResult(raw);
         return parsePairs(txt);
       }
       // FS path (unchanged)
@@ -1200,8 +1208,12 @@ Excuse me"></textarea><br>
       try{
         if (DRIVER === 'idb') {
           const filename = filenameFromSlug(slug);
-          const path = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
-          const t = await storage.readFile(path);
+          const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+          const stored   = idbPathBySlug.get(slug);
+          const path     = stored || computed;
+
+          const raw = await storage.readFile(path);
+          const t   = await normalizeReadResult(raw);
           const pairs = parsePairs(t);
           return pairs.map(p=>p[0]).filter(Boolean);
         }
@@ -1821,7 +1833,7 @@ Excuse me"></textarea><br>
 
       for(const el of targets){ attach(el); }
       unbindSwipe = ()=>{ for(const off of listeners){ try{off();}catch{} } };
-      console.log('[swipe] Pointer listeners bound on', targets.length, 'panels');
+      //console.log('[swipe] Pointer listeners bound on', targets.length, 'panels');
     }
 
     function unbindSessionGestures(){
@@ -2030,89 +2042,67 @@ Excuse me"></textarea><br>
       setTimeout(updateStartEnabled, 0);
     });
 
-    // ---- Card (set) selection -> load into textarea (FS or IDB) ----
-    async function loadSelectedCardsIntoTextarea(){
-      const sel = $('setSelect');
-      const slugs = getSelectedSlugs();
-
-      // nothing selected -> clear
-      if(!slugs.length){
-        $('pairs').value = '';
-        try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-        updateStartEnabled();
-        return;
-      }
-
-      // Multi-select: preview combined content
-      if(slugs.length > 1){
-        try{
-          const { text } = await buildCombinedFromSelected(slugs);
-          $('pairs').value = text;
-          // do not persist specific card key for multi
-          try{ localStorage.setItem(SELECTED_CARD_KEY, ''); }catch{}
-          updateStartEnabled();
-        }catch(e){
-          console.warn('[Card change] combine failed', e);
-          showToast('Failed to build combined preview');
-        }
-        return;
-      }
-
-      // Single selection
-      const slug = slugs[0];
-      try{
-        let text;
-        if (DRIVER === 'idb') {
-          // IDB path: <group>/<filename> or just filename for <base>
-          const filename = filenameFromSlug(slug);
-          const path = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
-          text = await storage.readFile(path);
-        } else {
-          // FS path via directory handle
-          if(!dirHandle){ showToast('Pick a folder first'); return; }
-          const base = await getGroupDirHandle(currentGroup);
-          const fh   = await base.getFileHandle(filenameFromSlug(slug));
-          text = await readFileText(fh);
-        }
-
-        // Determine display name (prefer NAME header)
-        const firstLine = (text.split(/\r?\n/,1)[0]||'');
-        let displayName = '';
-        const m = firstLine.match(/^\s*name\s*:\s*(.*)$/i);
-        if(m && m[1]){ displayName = sanitizeHeaderName(m[1]); }
-        if(!displayName){ displayName = titleCase(slugToNiceName(slug)); }
-
-        // Count pairs for header suffix
-        const pairs = parsePairs(text);
-        const count = pairs.length;
-
-        // Normalize header: ensure exactly one blank line after it, include count hint (not persisted)
-        let body = text.replace(/^\s+/, ''); // strip leading blanks
-        if(/^\s*name\s*:/i.test(body)){
-          body = body
-            .replace(/^\s*name\s*:\s*.*$/im, `NAME: ${displayName} (1 / ${count})`)
-            .replace(/^(NAME:.*?)(\r?\n\s*)+?/im, `$1\n\n`);
-        }else{
-          body = `NAME: ${displayName} (1 / ${count})\n\n` + body;
-        }
-
-        $('pairs').value = body;
-        try{ localStorage.setItem(SELECTED_CARD_KEY, slug); }catch{}
-        updateStartEnabled();
-      }catch(err){
-        console.warn('[Card change] read failed', err);
-        showToast('Failed to read file');
-      }
+    async function normalizeReadResult(v){
+      if (typeof v === 'string') return v;
+      if (v && typeof v.text === 'string') return v.text;
+      return ''; // treat anything else as empty
     }
 
+    async function loadSelectedCardsIntoTextarea(){
+      const slugs = getSelectedSlugs();
+
+      // Nothing selected
+      if (!slugs.length){
+        $('pairs').value = '';
+        updateStartEnabled();
+        return;
+      }
+
+      // Multi-select → combine
+      if (slugs.length > 1){
+        const { text } = await buildCombinedFromSelected(slugs);
+        $('pairs').value = text;
+        updateStartEnabled();
+        return;
+      }
+
+      // Single selection → load raw text from storage
+      const slug = slugs[0];
+      const filename = filenameFromSlug(slug);
+
+      let text = '';
+      try{
+        if (DRIVER === 'idb'){
+          // Prefer exact path from IDB listing
+          const stored = idbPathBySlug.get(slug);
+          const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+          const path = stored || computed;
+          const raw = await storage.readFile(path);
+          text = await normalizeReadResult(raw);
+        } else {
+          const base = await getGroupDirHandle(currentGroup);
+          const fh = await base.getFileHandle(filename);
+          text = await readFileText(fh);
+        }
+      }catch(e){
+        alert('Failed to read file. Did it move or get renamed?');
+        console.warn('[read]', e);
+        $('pairs').value = '';
+        updateStartEnabled();
+        return;
+      }
+
+      // Ensure a NAME header exists; if not, synthesize from slug
+      if (!/^\s*name\s*:/i.test(text)) {
+        const display = titleCase(slugToNiceName(slug));
+        text = `NAME: ${display}\n\n${text}`;
+      }
+
+      $('pairs').value = text;
+      updateStartEnabled();
+    }
     // Bind the loader
     $('setSelect').addEventListener('change', loadSelectedCardsIntoTextarea);
-            
-    console.log('[SAVE] saveBtn handler attached (addEventListener)');
-    // TEMP: global click logger for the Save button (will be removed later)
-    (document.getElementById('saveBtn'))?.addEventListener('click', ()=>{
-      console.log('[SAVE] saveBtn received a click (post-bind)');
-    });
     $('marqueeBtnSession').onclick = startMarqueeFromSession;
     $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); hideMarqueeScreen(); };
     $('fontUpBtn').onclick = () => setMarqueeFont(marquee.fontPx + 4);
