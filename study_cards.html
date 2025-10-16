@@ -304,8 +304,10 @@ Excuse me"></textarea><br>
     <div class="modalBox"><span class="spinner" aria-hidden="true"></span><span id="busyMsg">Downloading…</span></div>
   </div>
 
+  <script src="js/fs-driver.js"></script>
   <script src="js/idb-driver.js"></script>
-  <script>
+
+<script>
     // ---- Driver selection (FS vs IDB) ----
     const qs = new URLSearchParams(location.search);
     const forcedDriver = qs.get('driver'); // 'fs' | 'idb' | null
@@ -315,27 +317,16 @@ Excuse me"></textarea><br>
     // Optional: tiny on-screen badge (uncomment while testing)
     // (kept super subtle so it doesn't interfere with UI)
     
-    (function showDriverBadge(){
-      const b = document.createElement('div');
-      b.textContent = `driver: ${DRIVER}`;
-      b.style.cssText = 'position:fixed;right:8px;bottom:8px;padding:4px 8px;font:12px/1.2 system-ui;color:#111;background:#facc15;border-radius:8px;opacity:.85;z-index:9999;';
-      document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(b));
-    })();
+    // (function showDriverBadge(){
+    //   const b = document.createElement('div');
+    //   b.textContent = `driver: ${DRIVER}`;
+    //   b.style.cssText = 'position:fixed;right:8px;bottom:8px;padding:4px 8px;font:12px/1.2 system-ui;color:#111;background:#facc15;border-radius:8px;opacity:.85;z-index:9999;';
+    //   document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(b));
+    // })();
     // ---- End driver selection ----
 
-    // ---- Storage drivers (scaffold only — no behavior change yet) ----
-    const fsDriver = {
-      name: 'fs',
-      async init(){ /* keep current folder init exactly as it is (we’ll hook later) */ },
-      async syncFromManifest(url){ /* current library sync */ },
-      async listGroups(){ /* current groups from folder */ },
-      async listFiles(group){ /* current files from folder */ },
-      async readFile(path){ /* current file read */ },
-      async writeFile(path, text){ /* current file write */ },
-      async deleteFile(path){ /* current file delete */ },
-    };
-
-    const storage = (DRIVER === 'fs') ? fsDriver : idbDriver;
+    // ---- Storage drivers
+    const storage = (DRIVER === 'fs') ? window.fsDriver : window.idbDriver;
 
     const $=id=>document.getElementById(id);
 
@@ -425,6 +416,7 @@ Excuse me"></textarea><br>
     async function chooseSentencesFolder(){
       try{
         dirHandle = await window.showDirectoryPicker({ mode:'readwrite' });
+        if (window.fsDriver) window.fsDriver.setRoot(dirHandle);
         await navigator.storage?.persist?.();   // request persistent storage
         await idbSet('sentencesDir', dirHandle);
         $('setSelect').disabled = false;
@@ -662,6 +654,7 @@ Excuse me"></textarea><br>
           if(q === 'granted'){
             $('setSelect').disabled = false;
             await populateGroupSelect();
+            dirHandle = await window.showDirectoryPicker({ mode:'readwrite' });
             await populateSetSelectFromDir();
             showToast('Folder reconnected');
             return true;
