@@ -412,6 +412,16 @@ Excuse me"></textarea><br>
       return `${slug}${EXT}`;
     }
 
+    function pathForSlug(slug){
+      const fn = filenameFromSlug(slug);
+      if (DRIVER === 'idb'){
+        // For IDB, path key is group/filename or filename for base
+        return (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${fn}` : fn;
+      }
+      // FS driver uses group folders, but this is not consumed directly
+      return fn;
+    }
+
     async function chooseSentencesFolder(){
       try{
         dirHandle = await window.showDirectoryPicker({ mode:'readwrite' });
@@ -503,97 +513,121 @@ Excuse me"></textarea><br>
     }
 
     async function saveCurrentTextareaToFile(){
-      console.log('[SAVE] handler fired');
-      try{ showToast('Save clicked'); }catch{}
-      if(!dirHandle){
-        dbgSave('No dirHandle → prompting for folder…');
-        await chooseSentencesFolder();
-        if(!dirHandle){ dbgSave('Folder pick canceled'); return; }
-      }
+      try{ showToast('Saving…'); }catch{}
       const txtArea = $('pairs');
-      if(!txtArea){ dbgSave('Textarea not found'); return; }
-
-      // Ensure we actually have write permission (Android can silently drop it)
-      try{
-        let q = await dirHandle.queryPermission({ mode:'readwrite' });
-        dbgSave('queryPermission', q);
-        if(q !== 'granted'){
-          q = await dirHandle.requestPermission({ mode:'readwrite' });
-          dbgSave('requestPermission', q);
-          if(q !== 'granted'){
-            dbgSave('No write permission');
-            return;
-          }
-        }
-      }catch(e){ dbgSave('Permission APIs not supported', e?.message||e); }
+      if(!txtArea) return;
 
       const slugs = getSelectedSlugs();
-      dbgSave('Selected slugs', slugs);
-      if(slugs.length < 1){
-        dbgSave('No Card selected');
-        //return;
-      }
       // Validate header
       const currentHeader = headerNameFromTextarea();
-      dbgSave('Header NAME', currentHeader||'(none)');
       if(!currentHeader){
-        dbgSave('Missing NAME: header -> abort');
         const sb=$('saveBtn'); if(sb) sb.disabled = true;
+        showToast('Add a NAME: header first');
         return;
       }
 
-      // Prepare cleaned text: enforce clean NAME (no counts), keep the rest
+      // Clean header line (strip any counts) and normalize spacing after header
       const lines = txtArea.value.split(/\r?\n/);
       lines[0] = `NAME: ${titleCase(currentHeader)}`;
       let cleanedText = lines.join('\n');
       cleanedText = cleanedText.replace(/^(NAME:.*?)(\r?\n\s*)+/, '$1\n\n');
-      dbgSave('Prepared text length', cleanedText.length);
 
-      // Compare header to the original card’s display name
-      const selectedSlug = (slugs.length < 1) ? "" : slugs[0];
-      const baselineDisplay = titleCase(slugToNiceName(selectedSlug));
+      // Decide target slug:
+      // - Single selection + unchanged header => overwrite
+      // - Otherwise write a new file using header-derived slug (ensure unique)
+      const selectedSlug = (slugs.length === 1) ? slugs[0] : '';
+      const baselineDisplay = selectedSlug ? titleCase(slugToNiceName(selectedSlug)) : '';
       const headerDisplay   = titleCase(currentHeader);
-      dbgSave('Baseline vs Header', { baselineDisplay, headerDisplay });
-
       let targetSlug;
-      if(slugs.length === 1 && headerDisplay === baselineDisplay){
-        targetSlug = selectedSlug; // overwrite original when single + same name
+      if (selectedSlug && headerDisplay === baselineDisplay){
+        targetSlug = selectedSlug;
       } else {
-        targetSlug = await ensureUniqueSlug(slugify(headerDisplay)); // save as new when renamed or multi-select
+        targetSlug = await ensureUniqueSlug(slugify(headerDisplay));
       }
-      dbgSave('Target slug', targetSlug);
 
-      // Resolve actual target directory (current group)
-      const base = await getGroupDirHandle(currentGroup);
-      if(!base){ dbgSave('Group dir missing', currentGroup); return; }
+      if (DRIVER === 'idb'){
+        // Resolve a key path. Prefer existing stored path if overwriting.
+        let targetPath;
+        if (selectedSlug && targetSlug === selectedSlug){
+          const stored = idbPathBySlug.get(selectedSlug);
+          const computed = pathForSlug(selectedSlug);
+          targetPath = stored || computed;
+        } else {
+          targetPath = pathForSlug(targetSlug);
+        }
 
-      try{
-        dbgSave('Creating file handle', filenameFromSlug(targetSlug));
-        const fh = await base.getFileHandle(filenameFromSlug(targetSlug), { create:true });
-        dbgSave('Creating writable…');
-        const ws = await fh.createWritable();
-        dbgSave('Writing…');
-        await ws.write(cleanedText);
-        dbgSave('Closing…');
-        await ws.close();
-
-        if(targetSlug === selectedSlug){ dbgSave('Saved (overwrite)'); }
-        else if(slugs.length > 1){ dbgSave('Saved combined as new'); }
-        else { dbgSave('Saved as new'); }
-
+        await storage.writeFile(targetPath, cleanedText);
+        await populateGroupSelect();               // groups may change if header/slug implies new file name
         await populateSetSelectFromDir(targetSlug);
         try{ localStorage.setItem(SELECTED_CARD_KEY, targetSlug); }catch{}
+        showToast(targetSlug === selectedSlug ? 'Saved' : 'Saved as new');
+        return;
+      }
+
+      // FS driver (original flow)
+      if(!dirHandle){
+        await chooseSentencesFolder();
+        if(!dirHandle){ showToast('No folder selected'); return; }
+      }
+      try{
+        const base = await getGroupDirHandle(currentGroup);
+        const fh = await base.getFileHandle(filenameFromSlug(targetSlug), { create:true });
+        const ws = await fh.createWritable();
+        await ws.write(cleanedText);
+        await ws.close();
+        await populateSetSelectFromDir(targetSlug);
+        try{ localStorage.setItem(SELECTED_CARD_KEY, targetSlug); }catch{}
+        showToast(targetSlug === selectedSlug ? 'Saved' : 'Saved as new');
       }catch(err){
-        dbgSave('Save failed → picker fallback', err?.message||err);
         const ok = await saveViaPickerFallback(filenameFromSlug(targetSlug), cleanedText);
         if(!ok){
-          dbgSave('Picker fallback failed');
           alert('Unable to save the file. Try a different folder using 📁 Switch folder.');
         } else {
           await populateSetSelectFromDir('');
         }
       }
     }
+    $('deleteFileBtn').onclick = async () => {
+      const slugs = getSelectedSlugs();
+      if(!slugs.length){ showToast('No Card selected'); return; }
+
+      if (DRIVER === 'idb'){
+        let n=0, err=0;
+        for(const slug of slugs){
+          try{
+            const stored = idbPathBySlug.get(slug);
+            const path = stored || pathForSlug(slug);
+            await storage.deleteFile(path);
+            n++;
+          }catch{ err++; }
+        }
+        await populateGroupSelect();
+        await populateSetSelectFromDir('');
+        $('pairs').value = '';
+        updateStartEnabled();
+        showToast(err?`Deleted ${n}, ${err} failed`:`Deleted ${n}`);
+        return;
+      }
+
+      // FS mode: remove actual files from the chosen group directory
+      if(!dirHandle){ showToast('Pick a folder first'); return; }
+      try{
+        const base = await getGroupDirHandle(currentGroup);
+        let n=0, err=0;
+        for(const slug of slugs){
+          try{
+            await base.removeEntry(filenameFromSlug(slug));
+            n++;
+          }catch{ err++; }
+        }
+        await populateSetSelectFromDir('');
+        $('pairs').value = '';
+        updateStartEnabled();
+        showToast(err?`Deleted ${n}, ${err} failed`:`Deleted ${n}`);
+      }catch{
+        showToast('Delete failed');
+      }
+    };
 
     async function saveViaPickerFallback(filename, text){
       if(!window.showSaveFilePicker) return false;
@@ -2035,7 +2069,6 @@ Excuse me"></textarea><br>
     };
     // Bind Save with addEventListener to guarantee firing and log the event
     $('saveBtn').addEventListener('click', (e)=>{
-      console.log('[SAVE] click event', e);
       e.preventDefault();
       e.stopPropagation();
       saveCurrentTextareaToFile();
@@ -2195,27 +2228,6 @@ Excuse me"></textarea><br>
       try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
       showToast(`Cleared saved state for: ${slugToNiceName(slug)}`);
     };
-
-    // Delete the actual set file (destructive)
-    $('deleteFileBtn').onclick = async function(){
-      if (DRIVER === 'idb') { showToast('IDB mode: delete-from-app coming soon'); return; }
-      const slug = $('setSelect').value;
-      if(!slug || !dirHandle){ return; }
-      try{
-        const base = await getGroupDirHandle(currentGroup);
-        await base.removeEntry(filenameFromSlug(slug));        
-        try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
-        try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-        showToast(`Deleted file: ${slugToNiceName(slug)}`);
-        await populateSetSelectFromDir('');
-        $('setSelect').value='';
-        $('pairs').value='';
-        $('startBtn').disabled = true;
-      }catch(err){
-        alert('Failed to delete file. Permission denied or file missing.');
-      }
-    };
-
 
     (async function init(){
       $('setSelect').disabled = true;
