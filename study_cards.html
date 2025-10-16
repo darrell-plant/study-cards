@@ -305,6 +305,48 @@ Excuse me"></textarea><br>
   </div>
 
   <script>
+    // ---- Driver selection (FS vs IDB) ----
+    const qs = new URLSearchParams(location.search);
+    const forcedDriver = qs.get('driver'); // 'fs' | 'idb' | null
+    const supportsFS = !!(window.showDirectoryPicker && window.isSecureContext);
+    const DRIVER = forcedDriver ? forcedDriver : (supportsFS ? 'fs' : 'idb');
+
+    // Optional: tiny on-screen badge (uncomment while testing)
+    // (kept super subtle so it doesn't interfere with UI)
+    
+    (function showDriverBadge(){
+      const b = document.createElement('div');
+      b.textContent = `driver: ${DRIVER}`;
+      b.style.cssText = 'position:fixed;right:8px;bottom:8px;padding:4px 8px;font:12px/1.2 system-ui;color:#111;background:#facc15;border-radius:8px;opacity:.85;z-index:9999;';
+      document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(b));
+    })();
+    // ---- End driver selection ----
+
+    // ---- Storage drivers (scaffold only — no behavior change yet) ----
+    const fsDriver = {
+      name: 'fs',
+      async init(){ /* keep current folder init exactly as it is (we’ll hook later) */ },
+      async syncFromManifest(url){ /* current library sync */ },
+      async listGroups(){ /* current groups from folder */ },
+      async listFiles(group){ /* current files from folder */ },
+      async readFile(path){ /* current file read */ },
+      async writeFile(path, text){ /* current file write */ },
+      async deleteFile(path){ /* current file delete */ },
+    };
+
+    const idbDriver = {
+      name: 'idb',
+      async init(){ showToast('IDB mode (preview)'); },
+      async syncFromManifest(url){ showToast('Sync (IDB) coming soon'); },
+      async listGroups(){ return ['__base__']; },
+      async listFiles(group){ return []; },
+      async readFile(path){ throw new Error('IDB read not implemented yet'); },
+      async writeFile(path, text){ showToast('Save (IDB) coming soon'); },
+      async deleteFile(path){ showToast('Delete (IDB) coming soon'); },
+    };
+
+    const storage = (DRIVER === 'fs') ? fsDriver : idbDriver;
+
     const $=id=>document.getElementById(id);
 
     // --- File System Access API (Chrome) ---
@@ -1121,6 +1163,8 @@ Excuse me"></textarea><br>
     }
 
     async function startMarqueeFromSelected(){
+      if (DRIVER === 'idb') { showToast('IDB mode: read-only preview'); return; }
+
       const slugs = getSelectedSlugs();
       if(!slugs.length) return;
 
@@ -1450,6 +1494,8 @@ Excuse me"></textarea><br>
     function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
 
     async function startSession(){
+      if (DRIVER === 'idb') { showToast('IDB mode: read-only preview'); return; }
+      
       if(!dirHandle){ await chooseSentencesFolder(); if(!dirHandle) return; }
 
       const userText = $('pairs').value.trim();
@@ -1887,9 +1933,22 @@ Excuse me"></textarea><br>
     $('shuffleTopBtn').onclick = ()=>{ cancelCardTimers(); shuffleDeck(); scheduleCardTimer(); };
     $('selectBtn').onclick = ()=>{ cancelCardTimers(); selectJapanese(); };
     $('backBtnTop').onclick=back;
-    $('switchFolderBtn').onclick = chooseSentencesFolder;          // always open picker
-    $('reconnectFolderBtn').onclick = ensureFolderAccessInteractive; // try stored handle
-    $('syncLibraryBtn').onclick = syncLibraryIntoFolder;            // refresh from library
+
+    $('switchFolderBtn').onclick = () => {
+      if (DRIVER === 'idb') { showToast('IDB mode: folder selection not needed'); return; }
+      chooseSentencesFolder();
+    };
+
+    $('reconnectFolderBtn').onclick = () => {
+      if (DRIVER === 'idb') { showToast('IDB mode: reconnect not required'); return; }
+      ensureFolderAccessInteractive();
+    }; // try stored handle
+
+    $('syncLibraryBtn').onclick = () => {
+      if (DRIVER === 'idb') { showToast('IDB mode: library sync coming soon'); return; }
+      syncLibraryIntoFolder();            // refresh from library
+    };
+
     $('marqueeBtnStart').onclick = startMarqueeFromSelected;
     $('carModeBtn').onclick = () => {
       setCarMode(!carMode);
@@ -2042,6 +2101,7 @@ Excuse me"></textarea><br>
 
     // Delete the actual set file (destructive)
     $('deleteFileBtn').onclick = async function(){
+      if (DRIVER === 'idb') { showToast('IDB mode: delete-from-app coming soon'); return; }
       const slug = $('setSelect').value;
       if(!slug || !dirHandle){ return; }
       try{
@@ -2062,6 +2122,17 @@ Excuse me"></textarea><br>
 
     (async function init(){
       $('setSelect').disabled = true;
+
+      // IDB preview: don’t touch FS handles yet
+      if (DRIVER === 'idb') {
+        updateStartEnabled();
+        setCarMode(false);
+        applyViewFont();
+        updateViewerLayout();
+        showToast('IDB mode (preview): folder actions disabled');
+        return;
+      }
+
       try{
         const h = await idbGet('sentencesDir');
         if(h){
