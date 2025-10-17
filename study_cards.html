@@ -634,29 +634,35 @@ Excuse me"></textarea><br>
     // Attempt to restore access via user gesture; fall back to picking
     async function ensureFolderAccessInteractive(){
       try{
+        // Try restore from IndexedDB
         if(!dirHandle){
           const h = await idbGet('sentencesDir');
           if(h) dirHandle = h;
         }
         if(dirHandle){
+          // Check current permission
           let q = await dirHandle.queryPermission({ mode:'readwrite' });
           if(q !== 'granted'){
-            // requestPermission must be called in a user gesture (button tap)
+            // Must be triggered by a user gesture (button tap)
             q = await dirHandle.requestPermission({ mode:'readwrite' });
           }
           if(q === 'granted'){
+            // Reuse the existing handle; do NOT open the picker again
+            if (window.fsDriver) window.fsDriver.setRoot(dirHandle);
             $('setSelect').disabled = false;
             await populateGroupSelect();
-            dirHandle = await window.showDirectoryPicker({ mode:'readwrite' });
             await populateSetSelectFromDir();
             showToast('Folder reconnected');
             return true;
           }
+          // Permission denied or dismissed — fall through to re-pick
         }
-        // If we get here, either no handle or permission denied — pick anew
+        // If we get here, either no handle or permission not granted: pick anew
         await chooseSentencesFolder();
         return !!dirHandle;
-      }catch(err){ return false; }
+      }catch(err){
+        return false;
+      }
     }
 
     // --- Network & file helpers for Library sync ---
