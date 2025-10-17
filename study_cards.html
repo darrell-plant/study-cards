@@ -315,17 +315,6 @@ Excuse me"></textarea><br>
     const supportsFS = !!(window.showDirectoryPicker && window.isSecureContext);
     const DRIVER = forcedDriver ? forcedDriver : (supportsFS ? 'fs' : 'idb');
 
-    // Optional: tiny on-screen badge (uncomment while testing)
-    // (kept super subtle so it doesn't interfere with UI)
-    
-    // (function showDriverBadge(){
-    //   const b = document.createElement('div');
-    //   b.textContent = `driver: ${DRIVER}`;
-    //   b.style.cssText = 'position:fixed;right:8px;bottom:8px;padding:4px 8px;font:12px/1.2 system-ui;color:#111;background:#facc15;border-radius:8px;opacity:.85;z-index:9999;';
-    //   document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(b));
-    // })();
-    // ---- End driver selection ----
-
     // Hide FS-only UI when running in IDB mode
     if (DRIVER === 'idb') {
       // Hide the FS-only hint lines
@@ -341,13 +330,6 @@ Excuse me"></textarea><br>
 
     const $=id=>document.getElementById(id);
 
-    // --- File System Access API (Chrome) ---
-    // ---- DEBUG SAVE helper ----
-    const DEBUG_SAVE = false;
-    function dbgSave(msg, extra){
-      try{ console.log('[SAVE]', msg, extra||''); }catch{}
-      if(DEBUG_SAVE){ try{ showToast(String(msg)); }catch{} }
-    }
     let dirHandle = null;           // chosen /sentences directory
     // Current group (subfolder) selection within chosen folder
     const BASE_GROUP = "__base__";  // UI shows as <base>
@@ -1871,7 +1853,6 @@ Excuse me"></textarea><br>
 
       for(const el of targets){ attach(el); }
       unbindSwipe = ()=>{ for(const off of listeners){ try{off();}catch{} } };
-      //console.log('[swipe] Pointer listeners bound on', targets.length, 'panels');
     }
 
     function unbindSessionGestures(){
@@ -1888,7 +1869,7 @@ Excuse me"></textarea><br>
       showToast._timer=setTimeout(()=>t.classList.remove('show'), 1600);
     }
 
-    // ----- Clipboard helper (Android/PWA friendly) -----
+    // ----- Clipboard helper -----
     async function copyToClipboard(text){
       if(!text) return false;
       try{
@@ -2034,14 +2015,8 @@ Excuse me"></textarea><br>
     $('shuffleTopBtn').onclick = ()=>{ cancelCardTimers(); shuffleDeck(); scheduleCardTimer(); };
     $('selectBtn').onclick = ()=>{ cancelCardTimers(); selectJapanese(); };
     $('backBtnTop').onclick=back;
-
-    $('switchFolderBtn').onclick = () => {
-      chooseSentencesFolder();
-    };
-
-    $('reconnectFolderBtn').onclick = () => {
-      ensureFolderAccessInteractive();
-    }; // try stored handle
+    $('switchFolderBtn').onclick = () => { chooseSentencesFolder();};
+    $('reconnectFolderBtn').onclick = () => { ensureFolderAccessInteractive();};
 
     $('syncLibraryBtn').onclick = async () => {
       if (DRIVER === 'idb') {
