@@ -182,9 +182,10 @@
   <div class="wrap">
     <div id="inputCard" class="card">
       <h1 id="headerTitle">Study Cards</h1>
-      <p class="hint">Use 📁 to select a folder to store sentence files.<br>
+      <p class="hint">
+        <span class="fsOnly">Use 📁 to select a folder to store sentence files.<br>
         Use 🔌 to reconnect folder.<br>
-        Grant permissions when prompted.<br>
+        Grant permissions when prompted.<br></span>
         Use 🔄 to get the latest sentence files.
       </p>
 
@@ -324,6 +325,16 @@ Excuse me"></textarea><br>
     //   document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(b));
     // })();
     // ---- End driver selection ----
+
+    // Hide FS-only UI when running in IDB mode
+    if (DRIVER === 'idb') {
+      // Hide the FS-only hint lines
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.fsOnly, #switchFolderBtn, #reconnectFolderBtn').forEach(el => {
+          if (el) el.style.display = 'none';
+        });
+      });
+    }
 
     // ---- Storage drivers
     const storage = (DRIVER === 'fs') ? window.fsDriver : window.idbDriver;
@@ -2025,12 +2036,10 @@ Excuse me"></textarea><br>
     $('backBtnTop').onclick=back;
 
     $('switchFolderBtn').onclick = () => {
-      if (DRIVER === 'idb') { showToast('IDB mode: folder selection not needed'); return; }
       chooseSentencesFolder();
     };
 
     $('reconnectFolderBtn').onclick = () => {
-      if (DRIVER === 'idb') { showToast('IDB mode: reconnect not required'); return; }
       ensureFolderAccessInteractive();
     }; // try stored handle
 
