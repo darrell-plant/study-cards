@@ -1,10 +1,13 @@
 // js/idb-driver.js
 // IndexedDB-backed storage driver for Study Cards (IDB mode).
 // Public API (mirrors fsDriver):
-//   init(), syncFromManifest(indexUrl)
-//   listGroups(), listFiles(group)
-//   readFile(path), writeFile(path, text), deleteFile(path)
-
+//   init(), 
+//   syncFromManifest(indexUrl)
+//   listGroups()
+//   listFiles(group)
+//   readFile(path)
+//   writeFile(path, text)
+//   deleteFile(path)
 (function(global){
   const DB_NAME = 'sc_idb_library';
   const STORE   = 'files'; // key: path, value: { path, name, display, group, text, ts }
