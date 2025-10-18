@@ -33,6 +33,26 @@
     }
     button:disabled:hover{ filter:none; }
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
+
+    /* Car-mode Pause/Continue styling (taller + bigger text) */
+    #pauseBtn{
+      font-size: 1.6rem;        /* larger label */
+      transition: opacity .18s ease, transform .18s ease;
+    }
+
+    /* Gentle red when paused (label = Continue) */
+    #pauseBtn.paused {
+      background: #f87171; /* soft red */
+      color: #1b1111;
+      border-color: #fca5a5;
+    }
+
+    /* Brief fade/scale when swapping labels */
+    #pauseBtn.fading{
+      opacity: .25;
+      transform: scale(0.985);
+    }
+
     .card{border:1px solid #333;padding:0.5rem;margin:0rem;border-radius:12px;background:#121922;box-sizing:border-box}
 
     .reviewItem{ padding:.5rem .6rem; border-bottom:1px solid #263241; }
@@ -42,6 +62,28 @@
 
     /* Car mode alters card background */
     body.carMode .card{ background:#570f06; }
+
+    /* Show/hide Pause only by carMode */
+    body:not(.carMode) #pauseBtn { display:none !important; }
+    body.carMode #pauseBtn { display:inline-flex; }
+
+    /* Layout of Pause button within the action bar */
+    @media (orientation: portrait){
+      body.carMode #pauseBtn{
+        order:-1;           /* ensure it appears before the other buttons */
+        flex: 1 1 100%;     /* full width on its own row */
+      }
+      /* Give extra bottom space in portrait when we have two rows */
+      body.carMode { --bar-h: 148px; }
+    }
+    @media (orientation: landscape){
+      body.carMode #pauseBtn{
+        order:-1;           /* placed before the other buttons */
+        flex: 1 1 50%;      /* half width to the left of other actions */
+        max-width:50%;
+      }
+    }
+
     .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
     /* Top controls (session header) */
     .topBtn{
@@ -89,18 +131,19 @@
     .viewerBox.single.showAnswer #answerArea{ display:block; }
     /* Size the single panel to roughly the combined height of two panels */
     .viewerBox.single .viewerPanel{
-      height:52vh; min-height:52vh; max-height:52vh;
+      height:59vh; min-height:59vh; max-height:59vh;
     }
     @media (orientation: portrait){
       .viewerBox.single .viewerPanel{
-        height:76vh; min-height:76vh; max-height:76vh;
+        height:72vh; min-height:72vh; max-height:72vh;
       }
     }
     #promptArea{color:#a3e635;}
     #answerArea{color:#facc15;}
 
-    .bar{position:fixed;left:0;right:0;bottom:0;height:var(--bar-h);
+    .bar{position:fixed;left:0;right:0;bottom:0;min-height:var(--bar-h);
       display:flex;align-items:center;justify-content:flex-end;gap:.4rem;
+      flex-wrap:wrap;
       padding:0.6rem max(0.8rem, env(safe-area-inset-right));
       padding-bottom:calc(0.6rem + env(safe-area-inset-bottom, 0px));
       background:linear-gradient(180deg,rgba(11,15,20,.0) 0%,#0b0f14 12%,#0b0f14 100%);
@@ -252,8 +295,12 @@ Excuse me"></textarea><br>
         <div id="promptArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
         <div id="answerArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
       </div>
-
+      
       <div class="bar" id="actionBar" style="display:none">
+        <button id="pauseBtn" class="topBtn"
+          style="background:#a78bfa; color:#1b1130; border-color:#c4b5fd; text-align:center;">
+          Pause
+        </button>
         <button id="marqueeBtnSession" class="scroll">Scroll</button>
         <button id="selectBtn" class="select">Select</button>
         <button id="backStepBtn" class="back">Back</button>
@@ -343,6 +390,7 @@ Excuse me"></textarea><br>
     let carMode = false; // default non-car on startup
     function applyCarModeUI(){
       document.body.classList.toggle('carMode', carMode);
+      updatePauseButtonEnabled();
       const btn = $('carModeBtn');
       if(btn) btn.textContent = carMode ? '🚗' : '🏠';
     }
@@ -1526,22 +1574,40 @@ Excuse me"></textarea><br>
     }
 
     // ===== Study Card Timer =====
-    const TIMER_OPTIONS = [0,5,10,20,30];
+    const TIMER_OPTIONS = [0,5,10,15,20,30,60];
     let timerIdx = parseInt(localStorage.getItem('sc_timer_idx') || '0', 10);
     if(!(timerIdx>=0 && timerIdx<TIMER_OPTIONS.length)) timerIdx = 0;
     function timerSeconds(){ return TIMER_OPTIONS[timerIdx]; }
-    function updateTimerLabel(){ const b=$('timerBtn'); if(b) b.textContent = `${timerSeconds()}s`; }
+    function updateTimerLabel(){
+      const b = $('timerBtn');
+      if (!b) return;
+      if (paused && pausedRemainingMs > 0) {
+        b.textContent = `${Math.max(0, Math.ceil(pausedRemainingMs / 1000))}s`;
+      } else {
+        b.textContent = `${timerSeconds()}s`;
+      }
+    }
     function cycleTimer(){
       timerIdx = (timerIdx+1) % TIMER_OPTIONS.length;
       localStorage.setItem('sc_timer_idx', String(timerIdx));
       updateTimerLabel();
       cancelCardTimers();
       if(sessionActive()) scheduleCardTimer();
+      if (timerSeconds() === 0) {
+        paused = false;
+        setPauseLabel('Pause');
+      }
+      updatePauseButtonEnabled();
     }
 
     let revealTO=null, nextTO=null;
     let timerInterval=null; // interval for countdown label
     let timerEndAt=0;       // epoch ms when current phase ends
+
+    // ---- Pause/Continue (car-mode only) ----
+    let paused = false;
+    let pausedRemainingMs = 0; // how much time left when paused
+
     function timerActive(){ return !!(revealTO || nextTO); }
     function cancelCardTimers(){
       if(revealTO){ clearTimeout(revealTO); revealTO=null; }
@@ -1568,6 +1634,7 @@ Excuse me"></textarea><br>
       timerInterval = setInterval(draw, 1000);
     }
     function scheduleCardTimer(){
+      if (paused) { updateTimerLabel(); updatePauseButtonEnabled(); return; }
       cancelCardTimers();
       const secs = timerSeconds();
       if(!secs){ updateTimerLabel(); return; } // 0s: disabled
@@ -1577,6 +1644,61 @@ Excuse me"></textarea><br>
         revealTO = setTimeout(()=>{ if(sessionActive()) go(); }, ms);
       } else { // answer visible -> move next
         nextTO = setTimeout(()=>{ if(sessionActive()) go(); }, ms);
+      }
+      startCountdown(ms);
+      updatePauseButtonEnabled();
+    }
+
+    function updatePauseButtonEnabled() {
+      const b = $('pauseBtn');
+      if (!b) return;
+      const enabled = (timerSeconds() > 0) && sessionActive() && carMode;
+      b.disabled = !enabled;
+    }
+
+    function setPauseLabel(txt){
+      const b = $('pauseBtn'); if(!b) return;
+      // Fade out a touch, swap text, then fade back in
+      b.classList.add('fading');
+      setTimeout(()=>{
+        b.textContent = txt;
+        // toggle red style based on label
+        if (txt === 'Continue') {
+          b.classList.add('paused');
+        } else {
+          b.classList.remove('paused');
+        }
+        b.classList.remove('fading');
+      }, 140);
+    }
+
+    function pauseSessionTimers() {
+      if (paused) return;
+      if (timerSeconds() === 0) return; // no-op if timer disabled
+      // capture remaining time
+      const remain = Math.max(0, timerEndAt ? (timerEndAt - Date.now()) : 0);
+      pausedRemainingMs = remain;
+      cancelCardTimers();
+      paused = true;
+      updateTimerLabel();
+      setPauseLabel('Continue');
+    }
+
+    function resumeSessionTimers() {
+      if (!paused) return;
+      if (timerSeconds() === 0) {
+        paused = false;
+        setPauseLabel('Pause');
+        return;
+      }
+      const ms = (pausedRemainingMs > 0) ? pausedRemainingMs : (timerSeconds() * 1000);
+      paused = false;
+      setPauseLabel('Pause');
+      // schedule appropriate phase
+      if (!state.shown) {
+        revealTO = setTimeout(() => { if (sessionActive() && !paused) go(); }, ms);
+      } else {
+        nextTO = setTimeout(() => { if (sessionActive() && !paused) go(); }, ms);
       }
       startCountdown(ms);
     }
@@ -1613,6 +1735,7 @@ Excuse me"></textarea><br>
         updateHUD();
         updateTimerLabel();
         bindSessionGestures();
+        updatePauseButtonEnabled();
         return;
       }
       // ---------- END NEW ----------
@@ -1693,6 +1816,7 @@ Excuse me"></textarea><br>
       updateHUD();
       updateTimerLabel();
       bindSessionGestures();
+      updatePauseButtonEnabled();
       // refresh select from disk to ensure presence
       await populateSetSelectFromDir(slug);
     }
@@ -1743,6 +1867,7 @@ Excuse me"></textarea><br>
 
     function go(){
       if(state.cards.length===0)return;
+      if (paused) { paused = false; setPauseLabel('Pause'); }
       if(state.done){
         state.idx=0;state.shown=false;state.done=false;updateHUD();saveProgress();return;
       }
@@ -1773,6 +1898,7 @@ Excuse me"></textarea><br>
 
     function stepBack(){
       if(state.cards.length===0) return;
+      if (paused) { paused = false; setPauseLabel('Pause'); }
       if(state.shown){
         state.shown=false; state.done=false; updateHUD(); saveProgress(); return;
       }
@@ -1782,12 +1908,14 @@ Excuse me"></textarea><br>
 
     function reverseSides(){
       state.promptSide=state.promptSide==='jp'?'en':'jp';
+      if (paused) { paused = false; setPauseLabel('Pause'); }
       for(const c of state.cards){const t=c.q;c.q=c.a;c.a=t;}
       state.shown=false;state.done=false;updateHUD();saveProgress();
     }
 
     function shuffleDeck(){
       if(!state.cards.length) return;
+      if (paused) { paused = false; setPauseLabel('Pause'); }
       for(let i=state.cards.length-1;i>0;i--){
         const j=Math.floor(Math.random()*(i+1));
         [state.cards[i],state.cards[j]]=[state.cards[j],state.cards[i]];
@@ -1798,6 +1926,7 @@ Excuse me"></textarea><br>
     }
 
     async function back(){
+      if (paused) { paused = false; setPauseLabel('Pause'); }
       // Stop any timers
       cancelCardTimers();
       unbindSessionGestures();
@@ -2023,6 +2152,11 @@ Excuse me"></textarea><br>
     $('backBtnTop').onclick=back;
     $('switchFolderBtn').onclick = () => { chooseSentencesFolder();};
     $('reconnectFolderBtn').onclick = () => { ensureFolderAccessInteractive();};
+    $('pauseBtn').onclick = () => {
+      if (timerSeconds() === 0) return; // no-op when timer disabled
+      if (paused) resumeSessionTimers();
+      else pauseSessionTimers();
+    };
 
     $('syncLibraryBtn').onclick = async () => {
       if (DRIVER === 'idb') {

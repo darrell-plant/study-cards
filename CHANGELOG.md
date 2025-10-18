@@ -2,6 +2,17 @@
 
 All notable changes to **Study Cards** will be documented in this file.
 
+## [Unreleased]
+### Added
+- Large Pause/Continue button in car mode session screen
+
+### Changed
+- 
+
+### Fixed
+- 
+
+---
 ## [v1.1.2] — 2025-10-17
 ### Fixed
 - **Folder reconnect** (FS driver): no longer re-opens the folder picker when permission is already granted; the previously granted `FileSystemDirectoryHandle` is reused.
