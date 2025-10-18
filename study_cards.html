@@ -35,9 +35,16 @@
     .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
 
     /* Car-mode Pause/Continue styling (taller + bigger text) */
-    #pauseBtn{
-      font-size: 1.6rem;        /* larger label */
-      transition: opacity .18s ease, transform .18s ease;
+    #pauseBtn {
+      font-size: 1.6rem;
+      background: #a78bfa;
+      color: #1b1130;
+      border: 2px solid #c4b5fd;
+      text-align: center;
+      justify-content: center;
+      display: flex;
+      align-items: center;
+      transition: opacity .18s ease, transform .18s ease, background .25s ease, color .25s ease, border-color .25s ease;
     }
 
     /* Gentle red when paused (label = Continue) */
@@ -297,10 +304,7 @@ Excuse me"></textarea><br>
       </div>
       
       <div class="bar" id="actionBar" style="display:none">
-        <button id="pauseBtn" class="topBtn"
-          style="background:#a78bfa; color:#1b1130; border-color:#c4b5fd; text-align:center;">
-          Pause
-        </button>
+        <button id="pauseBtn" class="topBtn">Pause</button>
         <button id="marqueeBtnSession" class="scroll">Scroll</button>
         <button id="selectBtn" class="select">Select</button>
         <button id="backStepBtn" class="back">Back</button>
