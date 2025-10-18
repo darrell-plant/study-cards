@@ -1577,27 +1577,47 @@ Excuse me"></textarea><br>
       vb.classList.toggle('showAnswer', single && state.shown);
     }
 
-    // ===== Study Card Timer =====
+    // ===== Study Card Timers (independent Prompt/Answer) =====
     const TIMER_OPTIONS = [0,5,10,15,20,30,60];
-    let timerIdx = parseInt(localStorage.getItem('sc_timer_idx') || '0', 10);
-    if(!(timerIdx>=0 && timerIdx<TIMER_OPTIONS.length)) timerIdx = 0;
-    function timerSeconds(){ return TIMER_OPTIONS[timerIdx]; }
+
+    // Separate indices for Prompt and Answer phases
+    let timerIdxPrompt = parseInt(localStorage.getItem('sc_timer_idx_prompt') || '0', 10);
+    let timerIdxAnswer = parseInt(localStorage.getItem('sc_timer_idx_answer') || '0', 10);
+    if(!(timerIdxPrompt>=0 && timerIdxPrompt<TIMER_OPTIONS.length)) timerIdxPrompt = 0;
+    if(!(timerIdxAnswer>=0 && timerIdxAnswer<TIMER_OPTIONS.length)) timerIdxAnswer = 0;
+
+    function getPromptSeconds(){ return TIMER_OPTIONS[timerIdxPrompt]; }
+    function getAnswerSeconds(){ return TIMER_OPTIONS[timerIdxAnswer]; }
+
+    // Which phase are we in? If answer is showing -> Answer phase; else Prompt phase.
+    function getPhaseSeconds(){
+      return state.shown ? getAnswerSeconds() : getPromptSeconds();
+    }
+
     function updateTimerLabel(){
       const b = $('timerBtn');
       if (!b) return;
       if (paused && pausedRemainingMs > 0) {
         b.textContent = `${Math.max(0, Math.ceil(pausedRemainingMs / 1000))}s`;
       } else {
-        b.textContent = `${timerSeconds()}s`;
+        b.textContent = `${getPhaseSeconds()}s`;
       }
     }
+
+    // Click cycles the timer for the *current* phase
     function cycleTimer(){
-      timerIdx = (timerIdx+1) % TIMER_OPTIONS.length;
-      localStorage.setItem('sc_timer_idx', String(timerIdx));
+      const isAnswerPhase = !!state.shown;
+      if (isAnswerPhase) {
+        timerIdxAnswer = (timerIdxAnswer+1) % TIMER_OPTIONS.length;
+        localStorage.setItem('sc_timer_idx_answer', String(timerIdxAnswer));
+      } else {
+        timerIdxPrompt = (timerIdxPrompt+1) % TIMER_OPTIONS.length;
+        localStorage.setItem('sc_timer_idx_prompt', String(timerIdxPrompt));
+      }
       updateTimerLabel();
       cancelCardTimers();
-      if(sessionActive()) scheduleCardTimer();
-      if (timerSeconds() === 0) {
+      if (sessionActive()) scheduleCardTimer();
+      if (getPhaseSeconds() === 0) {
         paused = false;
         setPauseLabel('Pause');
       }
@@ -1640,7 +1660,7 @@ Excuse me"></textarea><br>
     function scheduleCardTimer(){
       if (paused) { updateTimerLabel(); updatePauseButtonEnabled(); return; }
       cancelCardTimers();
-      const secs = timerSeconds();
+      const secs = getPhaseSeconds();
       if(!secs){ updateTimerLabel(); return; } // 0s: disabled
       const ms = secs*1000;
 
@@ -1656,7 +1676,7 @@ Excuse me"></textarea><br>
     function updatePauseButtonEnabled() {
       const b = $('pauseBtn');
       if (!b) return;
-      const enabled = (timerSeconds() > 0) && sessionActive() && carMode;
+      const enabled = (getPhaseSeconds() > 0) && sessionActive() && carMode;
       b.disabled = !enabled;
     }
 
@@ -1678,7 +1698,7 @@ Excuse me"></textarea><br>
 
     function pauseSessionTimers() {
       if (paused) return;
-      if (timerSeconds() === 0) return; // no-op if timer disabled
+      if (getPhaseSeconds() === 0) return; // no-op if timer disabled
       // capture remaining time
       const remain = Math.max(0, timerEndAt ? (timerEndAt - Date.now()) : 0);
       pausedRemainingMs = remain;
@@ -1690,12 +1710,12 @@ Excuse me"></textarea><br>
 
     function resumeSessionTimers() {
       if (!paused) return;
-      if (timerSeconds() === 0) {
+      if (getPhaseSeconds() === 0) {
         paused = false;
         setPauseLabel('Pause');
         return;
       }
-      const ms = (pausedRemainingMs > 0) ? pausedRemainingMs : (timerSeconds() * 1000);
+      const ms = (pausedRemainingMs > 0) ? pausedRemainingMs : (getPhaseSeconds() * 1000);
       paused = false;
       setPauseLabel('Pause');
       // schedule appropriate phase
@@ -1890,11 +1910,13 @@ Excuse me"></textarea><br>
           $('goBtn').textContent='Restart';
           saveProgress();
           // If a timer is configured (>0s), schedule auto-restart after countdown
-          if (timerSeconds() > 0) {
+          if (getPhaseSeconds() > 0) {
             scheduleCardTimer();
           }
         } else {
-          state.shown=false;updateHUD();saveProgress();
+          state.shown=false;
+          updateHUD();
+          saveProgress();
           beepNext();
         }
       }
@@ -2157,7 +2179,7 @@ Excuse me"></textarea><br>
     $('switchFolderBtn').onclick = () => { chooseSentencesFolder();};
     $('reconnectFolderBtn').onclick = () => { ensureFolderAccessInteractive();};
     $('pauseBtn').onclick = () => {
-      if (timerSeconds() === 0) return; // no-op when timer disabled
+      if (getPhaseSeconds() === 0) return; // no-op when timer disabled
       if (paused) resumeSessionTimers();
       else pauseSessionTimers();
     };
