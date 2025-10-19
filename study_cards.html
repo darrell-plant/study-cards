@@ -432,7 +432,6 @@ Excuse me"></textarea><br>
       document.body.classList.toggle('carMode', carMode);
       const btn = $('carModeBtn');
       if (btn) btn.textContent = carMode ? '🚗' : '🏠';
-      // Do not reference `state` here (runs before state exists on first load)
     }
 
     function setCarMode(on){
@@ -2604,3 +2603,4 @@ Excuse me"></textarea><br>
     }
   </script>
 </body>
+</html>
