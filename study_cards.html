@@ -13,7 +13,7 @@
   <style>
     :root{ --bar-h: 76px; }
     body{font-family:sans-serif;background:#0b0f14;color:#ae9b1c;margin:0}
-    
+
     .wrap{ padding:1rem; }
     .hasBar .wrap{
       padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));
@@ -253,7 +253,7 @@
         <select id="groupSelect" disabled>
           <option value="__base__">&lt;base&gt;</option>
         </select>
-      </div> 
+      </div>
 
       <!-- Cards controls -->
       <div class="inline-group">
@@ -302,7 +302,7 @@ Excuse me"></textarea><br>
         <div id="promptArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
         <div id="answerArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
       </div>
-      
+
       <div class="bar" id="actionBar" style="display:none">
         <button id="pauseBtn" class="topBtn">Pause</button>
         <button id="marqueeBtnSession" class="scroll">Scroll</button>
@@ -390,7 +390,7 @@ Excuse me"></textarea><br>
       $('groupSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('setSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('pairs')?.addEventListener('input',  saveHomeStateFromUI);
-      
+
       // 4) Finish boot: allow autosave snapshots
       booting = false;
       saveHomeStateFromUI();
@@ -755,9 +755,17 @@ Excuse me"></textarea><br>
             // Reuse the existing handle; do NOT open the picker again
             if (window.fsDriver) window.fsDriver.setRoot(dirHandle);
             $('setSelect').disabled = false;
+
+            // Prevent autosave from overwriting HOME_STATE before we restore it.
+            const _prevBooting = booting;
+            booting = true;
             await populateGroupSelect();
             await populateSetSelectFromDir();
             await restoreHomeStateIfAny();
+            booting = _prevBooting;
+            // Snapshot once after full restore so HOME_STATE is correct.
+            saveHomeStateFromUI();
+
             showToast('Folder reconnected');
             return true;
           }
@@ -1260,7 +1268,7 @@ Excuse me"></textarea><br>
         enterSession();
       } else {
         exitSession();
-      } 
+      }
    }
 
     // ==== Refactored Marquee play logic ====
@@ -1838,7 +1846,7 @@ Excuse me"></textarea><br>
         return;
       }
       // ---------- END NEW ----------
-      
+
       // Resolve display name and slug.
       // IMPORTANT: If user selected an existing set, preserve its slug EXACTLY ...
       let displayName, slug;
@@ -2247,7 +2255,7 @@ Excuse me"></textarea><br>
       showToast(`Loaded ${list.length} pairs`);
       $('pairs').focus();
     }
-  
+
     function showBusy(msg){
       const b=$('busy'); const m=$('busyMsg');
       if(m) m.textContent = msg || 'Working…';
@@ -2256,7 +2264,7 @@ Excuse me"></textarea><br>
     function hideBusy(){ const b=$('busy'); if(b) b.style.display='none'; }
 
     function sessionActive(){ return $('sessionCard').style.display!=='none'; }
-    
+
     document.addEventListener('keydown', (e)=>{
       if(!sessionActive()) return;
       const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
@@ -2267,12 +2275,12 @@ Excuse me"></textarea><br>
       else if(e.key==='r' || e.key==='R'){ e.preventDefault(); reverseSides(); }
       else if(e.key==='s' || e.key==='S'){ e.preventDefault(); shuffleDeck(); }
     });
-    
+
     $('pairs').addEventListener('input', updateStartEnabled);
     $('pairs').addEventListener('focus', updateStartEnabled);
     $('pairs').addEventListener('blur',  updateStartEnabled);
 
-    // highlight the japanese text to simplify opening in 
+    // highlight the japanese text to simplify opening in
     // phone's Translation service
     function selectJapanese(){
       if(!sessionActive()) return;
