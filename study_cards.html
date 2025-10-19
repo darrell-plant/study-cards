@@ -234,7 +234,6 @@
       <h1 id="headerTitle">Study Cards</h1>
       <p class="hint">
         <span class="fsOnly">Use 📁 to select a folder to store sentence files.<br>
-        Use 🔌 to reconnect folder.<br>
         Grant permissions when prompted.<br></span>
         Use 🔄 to get the latest sentence files.
       </p>
@@ -243,7 +242,6 @@
       <div class="inline-group">
         <span class="sectionLabel" aria-hidden="true">Library</span>
         <button id="switchFolderBtn" class="iconBtn" title="Pick a different folder" aria-label="Pick a different folder">📁</button>
-        <button id="reconnectFolderBtn" class="iconBtn" title="Reconnect stored folder" aria-label="Reconnect stored folder">🔌</button>
         <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
       </div>
 
@@ -364,7 +362,16 @@ Excuse me"></textarea><br>
     const qs = new URLSearchParams(location.search);
     const forcedDriver = qs.get('driver'); // 'fs' | 'idb' | null
     const supportsFS = !!(window.showDirectoryPicker && window.isSecureContext);
-    const DRIVER = forcedDriver ? forcedDriver : (supportsFS ? 'fs' : 'idb');
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+
+    // Default to IDB. Allow FS only on desktop when explicitly requested via ?driver=fs
+    let DRIVER = 'idb';
+    if (forcedDriver === 'idb') {
+      DRIVER = 'idb';
+    } else if (forcedDriver === 'fs' && supportsFS && !isMobile) {
+      DRIVER = 'fs';
+    }
+
     const HOME_STATE_KEY = 'sc_home_state';     // { group, cards:[slug], text }
     const CAR_MODE_KEY   = 'sc_car_mode';       // '1' | '0'
 
@@ -376,16 +383,16 @@ Excuse me"></textarea><br>
 
       // 2) Ensure storage
       if (DRIVER === 'idb') {
-        document.querySelectorAll('.fsOnly, #switchFolderBtn, #reconnectFolderBtn')
+        document.querySelectorAll('.fsOnly, #switchFolderBtn')
           .forEach(el => { if (el) el.style.display = 'none'; });
         await populateGroupSelect();
         await restoreHomeStateIfAny();
       } else {
+        // FS on desktop by explicit URL only; no reconnect UI
         if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) {
           await ensureFolderAccessInteractive();
         }
       }
-
       // 3) Wire home-state persistence
       $('groupSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('setSelect')?.addEventListener('change', saveHomeStateFromUI);
@@ -2304,7 +2311,7 @@ Excuse me"></textarea><br>
     $('selectBtn').onclick = ()=>{ cancelCardTimers(); selectJapanese(); };
     $('backBtnTop').onclick=back;
     $('switchFolderBtn').onclick = () => { chooseSentencesFolder();};
-    $('reconnectFolderBtn').onclick = () => { ensureFolderAccessInteractive();};
+
     $('pauseBtn').onclick = () => {
       if (getPhaseSeconds() === 0) return; // no-op when timer disabled
       if (paused) resumeSessionTimers();
