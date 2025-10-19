@@ -368,36 +368,33 @@ Excuse me"></textarea><br>
     const HOME_STATE_KEY = 'sc_home_state';     // { group, cards:[slug], text }
     const CAR_MODE_KEY   = 'sc_car_mode';       // '1' | '0'
 
-    document.addEventListener('DOMContentLoaded', async () => {
-      // 1) Car mode is already restored at script load; just ensure wake lock matches
+    document.addEventListener('DOMContentLoaded', initApp);
+    async function initApp(){
+      // 1) Land home: reflect restored carMode visually and wake-lock, but do not persist.
       applyCarModeUI();
       if (carMode) { acquireWakeLock(); } else { releaseWakeLock(); }
 
+      // 2) Ensure storage
       if (DRIVER === 'idb') {
-        // 2) IDB mode: hide FS-only controls and bootstrap immediately
         document.querySelectorAll('.fsOnly, #switchFolderBtn, #reconnectFolderBtn')
           .forEach(el => { if (el) el.style.display = 'none'; });
-
-        await populateGroupSelect();       // list groups from IDB
-        await restoreHomeStateIfAny();     // restore group/cards/text snapshot
-      
-        // Finished bootstrapping: allow future auto-saves and persist one clean snapshot
-        booting = false;
-        saveHomeStateFromUI();
+        await populateGroupSelect();
+        await restoreHomeStateIfAny();
       } else {
         if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) {
           await ensureFolderAccessInteractive();
         }
       }
 
-      // 4) Persist Home snapshot whenever user changes things
+      // 3) Wire home-state persistence
       $('groupSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('setSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('pairs')?.addEventListener('input',  saveHomeStateFromUI);
-
-      // Ensure pause button reflects current mode after UI restore
-      updatePauseButtonEnabled();
-    });
+      
+      // 4) Finish boot: allow autosave snapshots
+      booting = false;
+      saveHomeStateFromUI();
+    }
 
     // ---- Storage drivers
     const storage = (DRIVER === 'fs') ? window.fsDriver : window.idbDriver;
@@ -416,7 +413,7 @@ Excuse me"></textarea><br>
     let booting = true;
     // Car mode (persisted across sessions)
     let carMode = (localStorage.getItem(CAR_MODE_KEY) === '1'); // restore immediately
-    console.debug('[car] restored from storage =', carMode ? '1' : '0');
+
     // Session state (must exist early to avoid TDZ when helpers run on load)
     const state = {
       cards: [],
@@ -436,21 +433,16 @@ Excuse me"></textarea><br>
 
     function setCarMode(on){
       const next = !!on;
-      console.log('[car] setCarMode called with', next, ' (prev=', carMode, ')');
-
       // If no change, just ensure UI is in sync and bail.
       if (next === carMode){
         applyCarModeUI();
-        updatePauseButtonEnabled();
         return;
       }
 
       // During boot, do not persist or touch wake lock; just reflect UI and return.
       if (booting){
-        console.trace('[car] setCarMode invoked during boot — ignoring persist');
         carMode = next;
         applyCarModeUI();
-        updatePauseButtonEnabled();
         return;
       }
 
@@ -458,7 +450,6 @@ Excuse me"></textarea><br>
       carMode = next;
       try {
         localStorage.setItem(CAR_MODE_KEY, carMode ? '1':'0');
-        console.log('[car] persisted sc_car_mode =', carMode ? '1' : '0');
       } catch {}
 
       // Reset font size based on mode (persist font size itself as usual)
@@ -467,7 +458,6 @@ Excuse me"></textarea><br>
       applyCarModeUI();
       applyViewFont();
       if (carMode) acquireWakeLock(); else releaseWakeLock();
-      updatePauseButtonEnabled();
     }
 
     // -------- Beep (car-mode only) --------
@@ -2332,10 +2322,6 @@ Excuse me"></textarea><br>
       setCarMode(!carMode);
     };
 
-    $('carModeBtn')?.addEventListener('click', () => {
-      console.log('[car] carModeBtn clicked; toggling to', !carMode);
-    });
-
     // Bind Save with addEventListener to guarantee firing and log the event
     $('saveBtn').addEventListener('click', (e)=>{
       e.preventDefault();
@@ -2522,9 +2508,6 @@ Excuse me"></textarea><br>
           showToast('IDB init failed');
         }
         updateStartEnabled();
-
-        applyCarModeUI();
-        updatePauseButtonEnabled();
 
         applyViewFont();
         updateViewerLayout();
