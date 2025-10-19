@@ -1257,17 +1257,11 @@ Excuse me"></textarea><br>
       $('marqueeCard').style.display='none';
       // restore previous caller screen
       if (marquee.caller === 'session') {
-        $('sessionCard').style.display='block';
-        $('actionBar').style.display='flex';
-        document.body.classList.add('hasBar');
-        // Resume study timer when returning from Scroll mode to session
-        updateTimerLabel();
-        scheduleCardTimer();
+        enterSession();
       } else {
-        $('inputCard').style.display='block';
-        document.body.classList.remove('hasBar');
-      }
-    }
+        exitSession();
+      } 
+   }
 
     // ==== Refactored Marquee play logic ====
     function playMarqueeLine(text, onDone){
@@ -1747,6 +1741,27 @@ Excuse me"></textarea><br>
       b.disabled = !enabled;
     }
 
+    // ---- Centralised session transitions ----
+    function enterSession(){
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='block';
+      $('actionBar').style.display='flex';
+      document.body.classList.add('hasBar');
+      updateHUD();
+      updateTimerLabel();
+      bindSessionGestures();
+      updatePauseButtonEnabled();
+    }
+
+    function exitSession(){
+      cancelCardTimers();
+      $('sessionCard').style.display='none';
+      $('actionBar').style.display='none';
+      $('inputCard').style.display='block';
+      document.body.classList.remove('hasBar');
+      updatePauseButtonEnabled();
+    }
+
     function setPauseLabel(txt){
       const b = $('pauseBtn'); if(!b) return;
       // Fade out a touch, swap text, then fade back in
@@ -1819,14 +1834,7 @@ Excuse me"></textarea><br>
         state.cards = mapPairsToCards(pairs, state.promptSide);
         state.idx = 0; state.shown = false; state.done = false;
 
-        $('inputCard').style.display='none';
-        $('sessionCard').style.display='block';
-        $('actionBar').style.display='flex';
-        document.body.classList.add('hasBar');
-        updateHUD();
-        updateTimerLabel();
-        bindSessionGestures();
-        updatePauseButtonEnabled();
+        enterSession();
         return;
       }
       // ---------- END NEW ----------
