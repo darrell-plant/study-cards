@@ -1115,6 +1115,63 @@ Excuse me"></textarea><br>
       return { text, pairs: allPairs, setsCount, pairCount };
     }
 
+    // --- Helpers to rebuild combined textarea and update home-state after removals ---
+    function buildCombinedTextFromPairs(pairs, setsCount){
+      const sc = Math.max(0, (setsCount|0) || 0);
+      const pc = Math.max(0, pairs ? pairs.length : 0);
+      let text = `NAME: Combined (${sc} / ${pc})\n\n`;
+      if (pc) {
+        text += pairs.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
+        if (!text.endsWith('\n')) text += '\n';
+      }
+      return text;
+    }
+
+    function updateCombinedStateAfterRemoval(removedIdx){
+      try{
+        if (state.setSlug) return; // only for combined sessions
+        const ta = $('pairs'); if(!ta) return;
+
+        // Parse current combined textarea
+        const beforePairs = parsePairs(ta.value);
+        if (!Array.isArray(beforePairs) || removedIdx < 0 || removedIdx >= beforePairs.length) return;
+
+        // Remove the target pair
+        const afterPairs = beforePairs.slice(0, removedIdx).concat(beforePairs.slice(removedIdx+1));
+
+        // Determine setsCount (number of source decks in the combined selection)
+        const setsCount = (() => {
+          const hs = loadHomeState();
+          const cp = hs && hs.combinedProgress;
+          if (cp && Array.isArray(cp.cards)) return cp.cards.length;
+          const sel = readSelectedSlugs();
+          return Array.isArray(sel) ? sel.length : 0;
+        })();
+
+        // Rebuild textarea text and update UI
+        const newText = buildCombinedTextFromPairs(afterPairs, setsCount);
+        ta.value = newText;
+
+        // Persist merged home-state with updated text and totals
+        const hs = loadHomeState();
+        hs.text = newText;
+        if (!hs.combinedProgress) hs.combinedProgress = {};
+        // keep identity
+        if (!Array.isArray(hs.combinedProgress.cards)) {
+          hs.combinedProgress.cards = readSelectedSlugs();
+        }
+        hs.combinedProgress.total = afterPairs.length;
+        hs.combinedProgress.idx = state.idx;           // state.idx already clamped after splice
+        hs.combinedProgress.shown = state.shown;
+        hs.combinedProgress.promptSide = state.promptSide || 'jp';
+        saveHomeState(hs);
+
+        updateStartEnabled(); // keeps Save/Start button states correct
+      }catch(e){
+        console.warn('updateCombinedStateAfterRemoval failed', e);
+      }
+    }
+
     // ===== Marquee mode state =====
     const MARQUEE_FONT_KEY = 'sc_marquee_font';
     const MARQUEE_SPEED_KEY = 'sc_marquee_speed'; // px per second
@@ -1536,9 +1593,23 @@ Excuse me"></textarea><br>
 
     function removeCurrentCardFromSession(){
       if(!state.cards.length) return;
+
+      // Remember which pair index we are removing relative to the pre-splice deck
+      const removedIdx = state.idx;
+
+      // Remove from in-memory session
       state.cards.splice(state.idx,1);
+
+      // Clamp index if we removed the last item
       if(state.idx >= state.cards.length){ state.idx = Math.max(0, state.cards.length-1); }
-      state.shown = false; state.done = (state.cards.length===0);
+      state.shown = false;
+      state.done = (state.cards.length===0);
+
+      // If this is a combined (unsaved) session, reflect the removal in HOME_STATE.text
+      if (!state.setSlug) {
+        updateCombinedStateAfterRemoval(removedIdx);
+      }
+
       if(state.done){
         $('promptArea').textContent='Done!';
         $('answerArea').textContent='Done!';
@@ -1547,6 +1618,8 @@ Excuse me"></textarea><br>
         cancelCardTimers();
       } else {
         updateHUD();
+        // After HUD uses new state.idx, re-save combined progress if applicable
+        if (!state.setSlug) saveCombinedProgressToHomeState();
       }
     }
 
@@ -1770,6 +1843,7 @@ Excuse me"></textarea><br>
 
     function exitSession(){
       cancelCardTimers();
+      try { if (!state.setSlug && state.cards && state.cards.length) saveCombinedProgressToHomeState(); } catch {}
       $('sessionCard').style.display='none';
       $('actionBar').style.display='none';
       $('inputCard').style.display='block';
@@ -1835,19 +1909,40 @@ Excuse me"></textarea><br>
       const m = (lines[0]||'').match(/^\s*name:\s*(.+)/i);
       const selectedSlugsMulti = getSelectedSlugs();
 
-      // ---------- NEW: Multi-select flow ----------
       if (selectedSlugsMulti.length > 1){
-        const { pairs } = await buildCombinedFromSelected(selectedSlugsMulti);
-        if(!pairs.length){ alert('No pairs found'); return; }
+        // Prefer the user's current textarea (or saved home-state text) to preserve pruned combined decks
+        const hs = loadHomeState();
+        const preferredText = (hs && typeof hs.text === 'string' && hs.text.trim().length)
+          ? hs.text
+          : $('pairs').value;
+
+        let pairsArr = parsePairs(preferredText);
+
+        // Fallback: if textarea was empty/invalid, rebuild from files once
+        if (!Array.isArray(pairsArr) || !pairsArr.length){
+          const res = await buildCombinedFromSelected(selectedSlugsMulti);
+          pairsArr = Array.isArray(res) ? res : (res && res.pairs) || [];
+          // If we rebuilt, also refresh the textarea so Home view matches
+          if (res && res.text) { $('pairs').value = res.text; }
+          if (!pairsArr.length){ alert('No pairs found'); return; }
+        }
 
         state.setName = `Combined (${selectedSlugsMulti.length})`;
         state.setSlug = ''; // transient session; do not persist progress per-file
-        // honour saved promptSide? For combined, default to previous or 'jp'
-        const saved = null;
-        state.promptSide = 'jp';
 
-        state.cards = mapPairsToCards(pairs, state.promptSide);
-        state.idx = 0; state.shown = false; state.done = false;
+        // Resume only if the identity (selected slugs) matches and counts align with saved progress
+        const cp = hs && hs.combinedProgress;
+        const canResume = !!(cp && arraysEqual(cp.cards || [], selectedSlugsMulti) && (cp.total|0) === pairsArr.length);
+        state.promptSide = (canResume && cp.promptSide) ? cp.promptSide : 'jp';
+
+        state.cards = mapPairsToCards(pairsArr, state.promptSide);
+        if (canResume) {
+          state.idx = Math.max(0, Math.min(cp.idx|0, Math.max(0, state.cards.length-1)));
+          state.shown = !!cp.shown;
+          state.done = false;
+        } else {
+          state.idx = 0; state.shown = false; state.done = false;
+        }
 
         enterSession();
         return;
@@ -1973,47 +2068,78 @@ Excuse me"></textarea><br>
       if(!sel) return [];
       return Array.from(sel.selectedOptions).map(o=>o.value).filter(Boolean);
     }
+
     function saveHomeStateFromUI(){
       try{
-        const group = currentGroup || "__base__";
-        const cards = readSelectedSlugs();
-        const text  = ($('pairs')?.value)||'';
-        localStorage.setItem(HOME_STATE_KEY, JSON.stringify({ group, cards, text }));
+        const hs = loadHomeState();
+        hs.group = currentGroup || "__base__";
+        hs.cards = readSelectedSlugs();
+        hs.text  = ($('pairs')?.value)||'';
+        // Do NOT wipe out combinedProgress here; that is updated via saveCombinedProgressToHomeState()
+        saveHomeState(hs);
       }catch{}
     }
+
     async function restoreHomeStateIfAny(){
-      // Suppress auto-saves while we rebuild the UI
-      booting = true;
-      let payload=null;
-      try{ payload = JSON.parse(localStorage.getItem(HOME_STATE_KEY)||'null'); }catch{}
-      if(!payload) return;
-      const group = payload.group || "__base__";
+      try{
+        const hs = loadHomeState();
+        if(!hs || (hs.group==null && !Array.isArray(hs.cards))) return;
 
-      // Select group if present
-      const gsel = $('groupSelect');
-      if(gsel && Array.from(gsel.options).some(o=>o.value===group)){
-        gsel.value = group;
-        currentGroup = group;
+        // 1) Restore group selection if present
+        if(hs.group){
+          const sel = $('groupSelect');
+          if(sel){
+            const opts = Array.from(sel.options).map(o=>o.value);
+            if(opts.includes(hs.group)){
+              sel.value = hs.group;
+              currentGroup = hs.group;
+              try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
+            }
+          }
+        }
+
+        // 2) Restore card selection in the dropdown (does not touch textarea yet)
+        const cards = Array.isArray(hs.cards) ? hs.cards.filter(Boolean) : [];
+        if(cards.length){
+          await populateSetSelectFromDir(cards);
+        } else {
+          await populateSetSelectFromDir('');
+        }
+
+        // 3) Combined (multi-select) → prefer saved text verbatim
+        if(cards.length > 1){
+          if(typeof hs.text === 'string' && hs.text.trim().length){
+            $('pairs').value = hs.text;                 // <- keep pruned deck exactly
+          } else {
+            // Fallback: if no saved text, build combined once
+            try{
+              const res = await buildCombinedFromSelected(cards);
+              const txt = Array.isArray(res)
+                ? res.map(([jp,en])=>`${jp}\n${en}`).join('\n\n')
+                : (res && res.text) || '';
+              $('pairs').value = (res && res.text) ? res.text : txt;
+            }catch{}
+          }
+        } else if (cards.length === 1){
+          // Single-card selection: keep existing behaviour (load elsewhere),
+          // but if user had custom text saved, respect it.
+          if(typeof hs.text === 'string' && hs.text.trim().length){
+            $('pairs').value = hs.text;
+          }
+        } else {
+          // No cards selected; if text exists (user pasted), restore it.
+          if(typeof hs.text === 'string'){ $('pairs').value = hs.text; }
+        }
+
+        updateStartEnabled();
+      }catch(e){
+        console.warn('restoreHomeStateIfAny failed', e);
       }
-
-      // Populate and restore cards in one step (preserves multi-select)
-      await populateSetSelectFromDir(Array.isArray(payload.cards) ? payload.cards : []);
-      // Fire change so the textarea rebuilds (if your handler depends on it)
-      $('setSelect')?.dispatchEvent(new Event('change', { bubbles:true }));
-
-      // Restore textarea snapshot (preserves unsaved edits)
-      if(typeof payload.text === 'string'){
-        $('pairs').value = payload.text;
-      }
-      updateStartEnabled();
-
-      // Done restoring; re-enable auto-saves and snapshot once
-      booting = false;
-      saveHomeStateFromUI();
     }
-
     function saveProgress(){
-      if(!state.setSlug) return;
+      // Combined (unsaved) session → stash into sc_home_state
+      if (!state.setSlug) { saveCombinedProgressToHomeState(); return; }
+      // Per-file session → keep existing per-deck progress
       const obj = {
         name: titleCase(state.setName||slugToNiceName(state.setSlug)),
         progress: { idx: state.idx, shown: state.shown },
@@ -2021,6 +2147,43 @@ Excuse me"></textarea><br>
         ts: Date.now()
       };
       saveProgressObj(state.setSlug, obj);
+    }
+
+    // Shallow array equality for slug lists (order matters)
+    function arraysEqual(a, b){
+      if (!Array.isArray(a) || !Array.isArray(b)) return false;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    // HOME_STATE helpers (safe merge)
+    function loadHomeState(){
+      try { return JSON.parse(localStorage.getItem(HOME_STATE_KEY) || 'null') || {}; }
+      catch { return {}; }
+    }
+    function saveHomeState(obj){
+      try { localStorage.setItem(HOME_STATE_KEY, JSON.stringify(obj)); } catch {}
+    }
+
+
+    // Persist progress for combined (unsaved) sessions into sc_home_state
+    function saveCombinedProgressToHomeState(){
+      // Only when this is a combined session (no per-file slug)
+      if (state.setSlug) return;
+      const hs = loadHomeState();
+      // Keep the current UI slugs as the identity of the combined deck
+      const cards = readSelectedSlugs();
+      hs.combinedProgress = {
+        cards,                            // identity of combined selection (ordered)
+        idx: Math.max(0, Math.min(state.idx|0, Math.max(0, state.cards.length-1))),
+        shown: !!state.shown,
+        promptSide: state.promptSide || 'jp',
+        total: state.cards.length|0,
+        ts: Date.now()
+      };
+
+      saveHomeState(hs);
     }
 
     function go(){
