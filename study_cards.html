@@ -255,7 +255,7 @@
 
       <!-- Cards controls -->
       <div class="inline-group">
-        <label for="setSelect">Card</label>
+        <label for="setSelect">Deck</label>
         <select id="setSelect" multiple size="4" disabled>
           <option value="">(none)</option>
         </select>
@@ -629,17 +629,17 @@ Excuse me"></textarea><br>
       let cleanedText = lines.join('\n');
       cleanedText = cleanedText.replace(/^(NAME:.*?)(\r?\n\s*)+/, '$1\n\n');
 
-      // Decide target slug:
-      // - Single selection + unchanged header => overwrite
-      // - Otherwise write a new file using header-derived slug (ensure unique)
+      // Decide target slug (Working Deck is authoritative):
+      // - If single selection and header unchanged => overwrite that slug.
+      // - Else derive slug from header and OVERWRITE if it already exists (no warning).
       const selectedSlug = (slugs.length === 1) ? slugs[0] : '';
       const baselineDisplay = selectedSlug ? titleCase(slugToNiceName(selectedSlug)) : '';
       const headerDisplay   = titleCase(currentHeader);
       let targetSlug;
       if (selectedSlug && headerDisplay === baselineDisplay){
-        targetSlug = selectedSlug;
+        targetSlug = selectedSlug; // overwrite existing
       } else {
-        targetSlug = await ensureUniqueSlug(slugify(headerDisplay));
+        targetSlug = slugify(headerDisplay); // may overwrite an existing deck of same slug
       }
 
       if (DRIVER === 'idb'){
@@ -1115,60 +1115,62 @@ Excuse me"></textarea><br>
       return { text, pairs: allPairs, setsCount, pairCount };
     }
 
-    // --- Helpers to rebuild combined textarea and update home-state after removals ---
-    function buildCombinedTextFromPairs(pairs, setsCount){
-      const sc = Math.max(0, (setsCount|0) || 0);
+    // --- Helpers to rebuild Working Deck text (single or combined) and update home-state after removals ---
+    function buildWorkingText(headerName, pairs, isCombined, setsCount){
       const pc = Math.max(0, pairs ? pairs.length : 0);
-      let text = `NAME: Combined (${sc} / ${pc})\n\n`;
-      if (pc) {
+      let header;
+      if (isCombined){
+        const sc = Math.max(0, (setsCount|0) || 0);
+        header = `NAME: Combined (${sc} / ${pc})`;
+      } else {
+        header = `NAME: ${titleCase(headerName||'')}`;
+      }
+      let text = header + '\n\n';
+      if (pc){
         text += pairs.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
         if (!text.endsWith('\n')) text += '\n';
       }
       return text;
     }
 
-    function updateCombinedStateAfterRemoval(removedIdx){
+    function updateHomeStateTextAfterRemoval(removedIdx){
       try{
-        if (state.setSlug) return; // only for combined sessions
         const ta = $('pairs'); if(!ta) return;
-
-        // Parse current combined textarea
         const beforePairs = parsePairs(ta.value);
         if (!Array.isArray(beforePairs) || removedIdx < 0 || removedIdx >= beforePairs.length) return;
 
         // Remove the target pair
         const afterPairs = beforePairs.slice(0, removedIdx).concat(beforePairs.slice(removedIdx+1));
 
-        // Determine setsCount (number of source decks in the combined selection)
-        const setsCount = (() => {
-          const hs = loadHomeState();
-          const cp = hs && hs.combinedProgress;
-          if (cp && Array.isArray(cp.cards)) return cp.cards.length;
-          const sel = readSelectedSlugs();
-          return Array.isArray(sel) ? sel.length : 0;
-        })();
+        // Determine if this is a combined selection (>=2 slugs) or single
+        const hs = loadHomeState();
+        let sel = Array.isArray(hs.cards) ? hs.cards.filter(Boolean) : [];
+        if (!sel.length) sel = readSelectedSlugs();
+        const isCombined = sel.length > 1 || (!state.setSlug && sel.length > 0);
 
-        // Rebuild textarea text and update UI
-        const newText = buildCombinedTextFromPairs(afterPairs, setsCount);
+        // Header for single = current header without counts; combined header is synthesized with counts
+        const header = isCombined ? 'Combined' : (headerNameFromTextarea() || state.setName || (state.setSlug ? titleCase(slugToNiceName(state.setSlug)) : ''));
+        const setsCount = isCombined ? sel.length : 0;
+
+        const newText = buildWorkingText(header, afterPairs, isCombined, setsCount);
         ta.value = newText;
 
-        // Persist merged home-state with updated text and totals
-        const hs = loadHomeState();
+        // Persist merged home-state with updated text
         hs.text = newText;
-        if (!hs.combinedProgress) hs.combinedProgress = {};
-        // keep identity
-        if (!Array.isArray(hs.combinedProgress.cards)) {
-          hs.combinedProgress.cards = readSelectedSlugs();
-        }
-        hs.combinedProgress.total = afterPairs.length;
-        hs.combinedProgress.idx = state.idx;           // state.idx already clamped after splice
-        hs.combinedProgress.shown = state.shown;
-        hs.combinedProgress.promptSide = state.promptSide || 'jp';
-        saveHomeState(hs);
 
-        updateStartEnabled(); // keeps Save/Start button states correct
+        if (isCombined){
+          if (!hs.combinedProgress) hs.combinedProgress = {};
+          if (!Array.isArray(hs.combinedProgress.cards)) hs.combinedProgress.cards = sel.slice();
+          hs.combinedProgress.total = afterPairs.length;
+          hs.combinedProgress.idx = state.idx;           // state.idx will already be clamped after splice
+          hs.combinedProgress.shown = state.shown;
+          hs.combinedProgress.promptSide = state.promptSide || 'jp';
+        }
+
+        saveHomeState(hs);
+        updateStartEnabled();
       }catch(e){
-        console.warn('updateCombinedStateAfterRemoval failed', e);
+        console.warn('updateHomeStateTextAfterRemoval failed', e);
       }
     }
 
@@ -1605,10 +1607,8 @@ Excuse me"></textarea><br>
       state.shown = false;
       state.done = (state.cards.length===0);
 
-      // If this is a combined (unsaved) session, reflect the removal in HOME_STATE.text
-      if (!state.setSlug) {
-        updateCombinedStateAfterRemoval(removedIdx);
-      }
+      // Reflect the removal in HOME_STATE.text for BOTH single and combined sessions
+      updateHomeStateTextAfterRemoval(removedIdx);
 
       if(state.done){
         $('promptArea').textContent='Done!';
@@ -1618,7 +1618,7 @@ Excuse me"></textarea><br>
         cancelCardTimers();
       } else {
         updateHUD();
-        // After HUD uses new state.idx, re-save combined progress if applicable
+        // After HUD uses new state, snapshot combined progress if applicable
         if (!state.setSlug) saveCombinedProgressToHomeState();
       }
     }
@@ -2098,7 +2098,7 @@ Excuse me"></textarea><br>
           }
         }
 
-        // 2) Restore card selection in the dropdown (does not touch textarea yet)
+        // 2) Restore deck selection in the dropdown (does not touch textarea yet)
         const cards = Array.isArray(hs.cards) ? hs.cards.filter(Boolean) : [];
         if(cards.length){
           await populateSetSelectFromDir(cards);
@@ -2106,29 +2106,35 @@ Excuse me"></textarea><br>
           await populateSetSelectFromDir('');
         }
 
-        // 3) Combined (multi-select) → prefer saved text verbatim
-        if(cards.length > 1){
-          if(typeof hs.text === 'string' && hs.text.trim().length){
-            $('pairs').value = hs.text;                 // <- keep pruned deck exactly
+        // 3) Prefer saved Working Deck text for both single- and multi-deck
+        const hasSavedText = (typeof hs.text === 'string' && hs.text.trim().length > 0);
+
+        if (cards.length >= 1){
+          if(hasSavedText){
+            $('pairs').value = hs.text;               // ← Working Deck is authoritative
           } else {
-            // Fallback: if no saved text, build combined once
-            try{
-              const res = await buildCombinedFromSelected(cards);
-              const txt = Array.isArray(res)
-                ? res.map(([jp,en])=>`${jp}\n${en}`).join('\n\n')
-                : (res && res.text) || '';
-              $('pairs').value = (res && res.text) ? res.text : txt;
-            }catch{}
-          }
-        } else if (cards.length === 1){
-          // Single-card selection: keep existing behaviour (load elsewhere),
-          // but if user had custom text saved, respect it.
-          if(typeof hs.text === 'string' && hs.text.trim().length){
-            $('pairs').value = hs.text;
+            // Fallback build (single: file, multi: combined)
+            if (cards.length === 1){
+              try{
+                // Single deck: rebuild if no saved text
+                const ps = await readDeckPairsForSlug(cards[0]);
+                let text = `NAME: ${titleCase(slugToNiceName(cards[0]))}\n\n`;
+                text += ps.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
+                if (!text.endsWith('\n')) text += '\n';
+                $('pairs').value = text;
+              }catch{ $('pairs').value = ''; }
+            } else {
+              try{
+                const res = await buildCombinedFromSelected(cards);
+                $('pairs').value = (res && res.text) ? res.text : (
+                  Array.isArray(res) ? res.map(([jp,en])=>`${jp}\n${en}`).join('\n\n') : ''
+                );
+              }catch{ $('pairs').value = ''; }
+            }
           }
         } else {
-          // No cards selected; if text exists (user pasted), restore it.
-          if(typeof hs.text === 'string'){ $('pairs').value = hs.text; }
+          // No selection; restore any saved scratch text
+          if(hasSavedText) $('pairs').value = hs.text;
         }
 
         updateStartEnabled();
@@ -2136,6 +2142,7 @@ Excuse me"></textarea><br>
         console.warn('restoreHomeStateIfAny failed', e);
       }
     }
+
     function saveProgress(){
       // Combined (unsaved) session → stash into sc_home_state
       if (!state.setSlug) { saveCombinedProgressToHomeState(); return; }
