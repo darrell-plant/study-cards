@@ -370,7 +370,14 @@ Excuse me"></textarea><br>
       await restoreHomeStateIfAny();
 
       // 3) Wire home-state persistence
-      $('groupSelect')?.addEventListener('change', saveHomeStateFromUI);
+      $('groupSelect')?.addEventListener('change', async (e)=>{
+        const sel = e.currentTarget;
+        const val = (sel && sel.value) ? sel.value : '__base__';
+        currentGroup = val;
+        try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
+        await populateSetSelectFromDir(''); // rebuild Deck list immediately (mobile-friendly)
+        saveHomeStateFromUI();              // persist new selection + any textarea
+      });
       $('setSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('pairs')?.addEventListener('input',  saveHomeStateFromUI);
 
