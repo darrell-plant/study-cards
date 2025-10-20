@@ -667,6 +667,7 @@ Excuse me"></textarea><br>
       } // else leave at (none)
 
       sel.disabled = false;
+      forceSelectRepaint(sel);
       if (!booting) saveHomeStateFromUI();
     }
 
@@ -710,6 +711,33 @@ Excuse me"></textarea><br>
       text += allPairs.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
       if(text && !text.endsWith('\n')) text += '\n';
       return { text, pairs: allPairs, setsCount, pairCount };
+    }
+
+    function forceSelectRepaint(sel){
+      if(!sel) return;
+      const ua = navigator.userAgent || '';
+      if(!/Android/i.test(ua)) return; // only nudge on Android
+
+      try{
+        // Snapshot selected values
+        const selectedVals = Array.from(sel.selectedOptions).map(o=>o.value);
+
+        // Hide/show to force style/layout invalidation
+        sel.style.display = 'none';
+        void sel.offsetHeight;         // reflow
+        sel.style.display = '';
+
+        // Nudge layout engine by briefly toggling the 'multiple' attribute
+        const was = sel.multiple;
+        sel.multiple = !was;
+        void sel.offsetHeight;
+        sel.multiple = was;
+
+        // Re-apply selection (some engines drop it when toggling)
+        for(const opt of sel.options){
+          opt.selected = selectedVals.includes(opt.value);
+        }
+      }catch{}
     }
 
     // --- Helpers to rebuild Working Deck text (single or combined) and update home-state after removals ---
