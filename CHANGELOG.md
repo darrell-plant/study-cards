@@ -4,14 +4,24 @@ All notable changes to **Study Cards** will be documented in this file.
 
 ## [Unreleased]
 ### Added
+-
+
+### Changed
+-
+
+### Fixed
+-
+
+## [v1.2.1]
+### Added
 - Large Pause/Continue button in car mode session screen
 - Consistent session restore on app reload
 
 ### Changed
-- Removed support for FileSytemAcess api (in favour of IndexedDB)
+- Removed support for File Sytem Access api (fs-driver) in favour of IndexedDB
 
 ### Fixed
--
+- UI labelling/terminolgy inconsistencies
 
 ---
 ## [v1.1.2] — 2025-10-17
