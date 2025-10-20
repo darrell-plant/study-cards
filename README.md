@@ -14,9 +14,7 @@ An offline-first Progressive Web App (PWA) for practising Japanese–English sen
 - 💾 **Export & New Deck**: On the Review screen, use **Export** to copy Difficult cards to the clipboard in Study Cards format, or **New Deck** to instantly create a new deck in memory from Difficult cards.
 - 🔄 **Sync library**: Download/update sets from the online `library/` hosted in this repo.
 - 💀 **Delete set**: Remove the `.data` file from the chosen folder (with confirmation).
-- 💽 **Dual storage drivers**: Supports both File System Access API and IndexedDB drivers. IndexedDB mode enables full offline support on iOS and Fire tablets, while File System Access API remains available for Android and desktop Chrome. The driver is automatically chosen based on platform.
-  - 📂 **FS-API: Folder access**: Choose a local folder to store your `.data` files (plain text sentence pairs).
-  - 🔌 **FS-API: Reconnect**: Reconnect to a previously chosen folder after restart.
+- 💾 **IndexedDB storage**: All decks, groups, and saved progress are stored in browser IndexedDB. No folder access required; works fully offline on all platforms.
 
 ## 📝 Deck file format
 Each set is a plain text file with extension `.data`:
@@ -40,28 +38,20 @@ Excuse me
 
 ## 📚 Library sync
 - The app fetches `library/index.json` from GitHub Pages.
-- Each file listed in the manifest is downloaded into the chosen folder or browser's IndexedDB.
+- Each file listed in the manifest is downloaded into the browser's IndexedDB.
 - Sync policies: add new only, overwrite if changed, or force overwrite all.
 - Default is **overwrite if changed**.
 - Folder hierarchy (Groups) is now supported and the `Groups` dropdown filters Sets by subfolder.
 - Multi-select Cards: select multiple Sets to study or combine; the textarea and session work with all selected files.
 
-## 🔐 Permissions (FS Acess API only)
-- Chrome will prompt to grant folder access.
-- On Android, reconnecting may require tapping the 🔌 icon due to stricter permission rules.
-- On desktop, folder permission is usually remembered.
-
 ## 🛠 Development
 - Built as a single-page HTML/JS app (`study_cards.html`).
 - Uses:
-  - File System Access API (Android/Chrome)
-  - IndexedDB for systems not supporting File System Access
-  - IndexedDB for persisting folder handles and offline storage
-  - localStorage for saving progress
+  - IndexedDB for persistent storage and offline library sync
+  - localStorage for progress and session state
   - Service Worker for offline caching
   - Wake Lock API for car and scroll modes
 - No build step required.
-- The app features a dual driver architecture supporting both File System Access API and IndexedDB storage. A `/next` version uses IndexedDB exclusively to enable full offline support on platforms like iOS and Fire tablets.
 
 ## 🚀 Installation
 - Open [GitHub Pages link](https://darrell-plant.github.io/study-cards).
@@ -88,4 +78,4 @@ Excuse me
 ## 📄 License
 MIT License © 2025
 
-Version v1.1.0
+Version v1.2.0

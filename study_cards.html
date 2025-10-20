@@ -233,15 +233,12 @@
     <div id="inputCard" class="card">
       <h1 id="headerTitle">Study Cards</h1>
       <p class="hint">
-        <span class="fsOnly">Use 📁 to select a folder to store sentence files.<br>
-        Grant permissions when prompted.<br></span>
         Use 🔄 to get the latest sentence files.
       </p>
 
       <!-- Library controls -->
       <div class="inline-group">
         <span class="sectionLabel" aria-hidden="true">Library</span>
-        <button id="switchFolderBtn" class="iconBtn" title="Pick a different folder" aria-label="Pick a different folder">📁</button>
         <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
       </div>
 
@@ -354,25 +351,12 @@ Excuse me"></textarea><br>
     <div class="modalBox"><span class="spinner" aria-hidden="true"></span><span id="busyMsg">Downloading…</span></div>
   </div>
 
-  <script src="js/fs-driver.js"></script>
   <script src="js/idb-driver.js"></script>
 
 <script>
-    // ---- Driver selection (FS vs IDB) ----
-    const qs = new URLSearchParams(location.search);
-    const forcedDriver = qs.get('driver'); // 'fs' | 'idb' | null
-    const supportsFS = !!(window.showDirectoryPicker && window.isSecureContext);
-    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-
-    // Default to IDB. Allow FS only on desktop when explicitly requested via ?driver=fs
-    let DRIVER = 'idb';
-    if (forcedDriver === 'idb') {
-      DRIVER = 'idb';
-    } else if (forcedDriver === 'fs' && supportsFS && !isMobile) {
-      DRIVER = 'fs';
-    }
-
-    const HOME_STATE_KEY = 'sc_home_state';     // { group, cards:[slug], text }
+    // ---- Driver: IDB only ----
+    const DRIVER = 'idb';
+    const HOME_STATE_KEY = 'sc_home_state';     // { group, cards:[slug], text, combinedProgress? }
     const CAR_MODE_KEY   = 'sc_car_mode';       // '1' | '0'
 
     document.addEventListener('DOMContentLoaded', initApp);
@@ -381,18 +365,10 @@ Excuse me"></textarea><br>
       applyCarModeUI();
       if (carMode) { acquireWakeLock(); } else { releaseWakeLock(); }
 
-      // 2) Ensure storage
-      if (DRIVER === 'idb') {
-        document.querySelectorAll('.fsOnly, #switchFolderBtn')
-          .forEach(el => { if (el) el.style.display = 'none'; });
-        await populateGroupSelect();
-        await restoreHomeStateIfAny();
-      } else {
-        // FS on desktop by explicit URL only; no reconnect UI
-        if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-          await ensureFolderAccessInteractive();
-        }
-      }
+      // 2) Ensure storage (IDB only)
+      await populateGroupSelect();
+      await restoreHomeStateIfAny();
+
       // 3) Wire home-state persistence
       $('groupSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('setSelect')?.addEventListener('change', saveHomeStateFromUI);
@@ -404,11 +380,10 @@ Excuse me"></textarea><br>
     }
 
     // ---- Storage drivers
-    const storage = (DRIVER === 'fs') ? window.fsDriver : window.idbDriver;
+    const storage = window.idbDriver;
 
     const $=id=>document.getElementById(id);
 
-    let dirHandle = null;           // chosen /sentences directory
     // Current group (subfolder) selection within chosen folder
     const BASE_GROUP = "__base__";  // UI shows as <base>
     let currentGroup = BASE_GROUP;
@@ -509,221 +484,34 @@ Excuse me"></textarea><br>
 
     function pathForSlug(slug){
       const fn = filenameFromSlug(slug);
-      if (DRIVER === 'idb'){
-        // For IDB, path key is group/filename or filename for base
-        return (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${fn}` : fn;
-      }
-      // FS driver uses group folders, but this is not consumed directly
-      return fn;
-    }
-
-    async function chooseSentencesFolder(){
-      try{
-        dirHandle = await window.showDirectoryPicker({ mode:'readwrite' });
-        if (window.fsDriver) window.fsDriver.setRoot(dirHandle);
-        await navigator.storage?.persist?.();   // request persistent storage
-        await idbSet('sentencesDir', dirHandle);
-        $('setSelect').disabled = false;
-        await populateGroupSelect();
-
-        // Try to restore saved group in this new folder
-        try{
-          const savedGroup = localStorage.getItem(SELECTED_GROUP_KEY);
-          if(savedGroup){
-            const sel = $('groupSelect');
-            if([...sel.options].some(o=>o.value===savedGroup)){
-              sel.value = savedGroup;
-              currentGroup = savedGroup;
-            } else {
-              currentGroup = BASE_GROUP;
-              sel.value = BASE_GROUP;
-            }
-          }
-        }catch{}
-
-        await populateSetSelectFromDir();
-        await restoreHomeStateIfAny();
-
-        // Try to restore saved card within this group
-        try{
-          const savedCard = localStorage.getItem(SELECTED_CARD_KEY);
-          if(savedCard){
-            const sel = $('setSelect');
-            if([...sel.options].some(o=>o.value===savedCard)){
-              sel.value = savedCard;
-              const base = await getGroupDirHandle(currentGroup);
-              const fh = await base.getFileHandle(filenameFromSlug(savedCard));
-              let t = await readFileText(fh);
-              const name = titleCase(slugToNiceName(savedCard));
-              const pairs = parsePairs(t);
-              t = normalizeDeckTop(t, name, 1, pairs.length);
-              $('pairs').value = t;
-            } else {
-              try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-              $('pairs').value = '';
-            }
-          } else {
-            $('pairs').value = '';
-          }
-        }catch{ $('pairs').value = ''; }
-
-        showToast('Folder selected');
-      }catch(err){
-        // user cancelled; keep disabled state
-      }
+      // For IDB, path key is group/filename or filename for base
+      return (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${fn}` : fn;
     }
 
     async function listDataFiles(group = currentGroup){
-      if (DRIVER === 'idb') {
-        const items = await storage.listFiles(group);
-        // Adapt to existing shape: {name, handle}
-        // We only use .name downstream, so a dummy handle is fine.
-        return items.map(it => ({ name: it.name, handle: null, _path: it.path, _display: it.display }));
-      }
-
-      if(!dirHandle) return [];
-      const base = await getGroupDirHandle(group);
-      if(!base) return [];
-      const files=[];
-      for await (const [name, handle] of base.entries()){
-        if(handle.kind==='file' && name.toLowerCase().endsWith(EXT)){
-          files.push({ name, handle });
-        }
-      }
-      const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
-      files.sort((a,b)=>coll.compare(a.name,b.name));
-      return files;
+      const items = await storage.listFiles(group);
+      // Adapt to existing shape: {name, handle}
+      return items.map(it => ({ name: it.name, handle: null, _path: it.path, _display: it.display }));
     }
 
-    async function readFileText(fileHandle){
-      const file = await fileHandle.getFile();
-      return await file.text();
-    }
-
-    async function writeFileText(slug, text){
-      if(!dirHandle) throw new Error('No folder selected');
-      const base = await getGroupDirHandle(currentGroup);
-      const fh = await base.getFileHandle(filenameFromSlug(slug), { create:true });
-      const ws = await fh.createWritable();
-      await ws.write(text);
-      await ws.close();
-    }
-
-    async function saveCurrentTextareaToFile(){
-      try{ showToast('Saving…'); }catch{}
-      const txtArea = $('pairs');
-      if(!txtArea) return;
-
-      const slugs = getSelectedSlugs();
-      // Validate header
-      const currentHeader = headerNameFromTextarea();
-      if(!currentHeader){
-        const sb=$('saveBtn'); if(sb) sb.disabled = true;
-        showToast('Add a NAME: header first');
-        return;
-      }
-
-      // Clean header line (strip any counts) and normalize spacing after header
-      const lines = txtArea.value.split(/\r?\n/);
-      lines[0] = `NAME: ${titleCase(currentHeader)}`;
-      let cleanedText = lines.join('\n');
-      cleanedText = cleanedText.replace(/^(NAME:.*?)(\r?\n\s*)+/, '$1\n\n');
-
-      // Decide target slug (Working Deck is authoritative):
-      // - If single selection and header unchanged => overwrite that slug.
-      // - Else derive slug from header and OVERWRITE if it already exists (no warning).
-      const selectedSlug = (slugs.length === 1) ? slugs[0] : '';
-      const baselineDisplay = selectedSlug ? titleCase(slugToNiceName(selectedSlug)) : '';
-      const headerDisplay   = titleCase(currentHeader);
-      let targetSlug;
-      if (selectedSlug && headerDisplay === baselineDisplay){
-        targetSlug = selectedSlug; // overwrite existing
-      } else {
-        targetSlug = slugify(headerDisplay); // may overwrite an existing deck of same slug
-      }
-
-      if (DRIVER === 'idb'){
-        // Resolve a key path. Prefer existing stored path if overwriting.
-        let targetPath;
-        if (selectedSlug && targetSlug === selectedSlug){
-          const stored = idbPathBySlug.get(selectedSlug);
-          const computed = pathForSlug(selectedSlug);
-          targetPath = stored || computed;
-        } else {
-          targetPath = pathForSlug(targetSlug);
-        }
-
-        await storage.writeFile(targetPath, cleanedText);
-        await populateGroupSelect();               // groups may change if header/slug implies new file name
-        await populateSetSelectFromDir(targetSlug);
-        try{ localStorage.setItem(SELECTED_CARD_KEY, targetSlug); }catch{}
-        showToast(targetSlug === selectedSlug ? 'Saved' : 'Saved as new');
-        return;
-      }
-
-      // FS driver (original flow)
-      if(!dirHandle){
-        await chooseSentencesFolder();
-        if(!dirHandle){ showToast('No folder selected'); return; }
-      }
-      try{
-        const base = await getGroupDirHandle(currentGroup);
-        const fh = await base.getFileHandle(filenameFromSlug(targetSlug), { create:true });
-        const ws = await fh.createWritable();
-        await ws.write(cleanedText);
-        await ws.close();
-        await populateSetSelectFromDir(targetSlug);
-        try{ localStorage.setItem(SELECTED_CARD_KEY, targetSlug); }catch{}
-        showToast(targetSlug === selectedSlug ? 'Saved' : 'Saved as new');
-      }catch(err){
-        const ok = await saveViaPickerFallback(filenameFromSlug(targetSlug), cleanedText);
-        if(!ok){
-          alert('Unable to save the file. Try a different folder using 📁 Switch folder.');
-        } else {
-          await populateSetSelectFromDir('');
-        }
-      }
-    }
     $('deleteFileBtn').onclick = async () => {
       const slugs = getSelectedSlugs();
       if(!slugs.length){ showToast('No Card selected'); return; }
-
-      if (DRIVER === 'idb'){
-        let n=0, err=0;
-        for(const slug of slugs){
-          try{
-            const stored = idbPathBySlug.get(slug);
-            const path = stored || pathForSlug(slug);
-            await storage.deleteFile(path);
-            n++;
-          }catch{ err++; }
-        }
-        await populateGroupSelect();
-        await populateSetSelectFromDir('');
-        $('pairs').value = '';
-        updateStartEnabled();
-        showToast(err?`Deleted ${n}, ${err} failed`:`Deleted ${n}`);
-        return;
+      let n=0, err=0;
+      for(const slug of slugs){
+        try{
+          const stored = idbPathBySlug.get(slug);
+          const path = stored || pathForSlug(slug);
+          await storage.deleteFile(path);
+          try { localStorage.removeItem(keyForSlug(slug)); } catch {}
+          n++;
+        }catch{ err++; }
       }
-
-      // FS mode: remove actual files from the chosen group directory
-      if(!dirHandle){ showToast('Pick a folder first'); return; }
-      try{
-        const base = await getGroupDirHandle(currentGroup);
-        let n=0, err=0;
-        for(const slug of slugs){
-          try{
-            await base.removeEntry(filenameFromSlug(slug));
-            n++;
-          }catch{ err++; }
-        }
-        await populateSetSelectFromDir('');
-        $('pairs').value = '';
-        updateStartEnabled();
-        showToast(err?`Deleted ${n}, ${err} failed`:`Deleted ${n}`);
-      }catch{
-        showToast('Delete failed');
-      }
+      await populateGroupSelect();
+      await populateSetSelectFromDir('');
+      $('pairs').value = '';
+      updateStartEnabled();
+      showToast(err?`Deleted ${n}, ${err} failed`:`Deleted ${n}`);
     };
 
     async function saveViaPickerFallback(filename, text){
@@ -743,150 +531,45 @@ Excuse me"></textarea><br>
       }
     }
 
-    // Attempt to restore access via user gesture; fall back to picking
-    async function ensureFolderAccessInteractive(){
-      try{
-        // Try restore from IndexedDB
-        if(!dirHandle){
-          const h = await idbGet('sentencesDir');
-          if(h) dirHandle = h;
-        }
-        if(dirHandle){
-          // Check current permission
-          let q = await dirHandle.queryPermission({ mode:'readwrite' });
-          if(q !== 'granted'){
-            // Must be triggered by a user gesture (button tap)
-            q = await dirHandle.requestPermission({ mode:'readwrite' });
-          }
-          if(q === 'granted'){
-            // Reuse the existing handle; do NOT open the picker again
-            if (window.fsDriver) window.fsDriver.setRoot(dirHandle);
-            $('setSelect').disabled = false;
-
-            // Prevent autosave from overwriting HOME_STATE before we restore it.
-            const _prevBooting = booting;
-            booting = true;
-            await populateGroupSelect();
-            await populateSetSelectFromDir();
-            await restoreHomeStateIfAny();
-            booting = _prevBooting;
-            // Snapshot once after full restore so HOME_STATE is correct.
-            saveHomeStateFromUI();
-
-            showToast('Folder reconnected');
-            return true;
-          }
-          // Permission denied or dismissed — fall through to re-pick
-        }
-        // If we get here, either no handle or permission not granted: pick anew
-        await chooseSentencesFolder();
-        return !!dirHandle;
-      }catch(err){
-        return false;
-      }
-    }
-
-    // --- Network & file helpers for Library sync ---
-    async function fetchTextScoped(path){
-      const url = new URL(path, location.href).toString();
-      const res = await fetch(url, { cache: 'no-cache' });
-      if(!res.ok) throw new Error(`Fetch ${path} ${res.status}`);
-      return await res.text();
-    }
-    async function fetchJSONScoped(path){
-      return JSON.parse(await fetchTextScoped(path));
-    }
-    async function ensureSubdir(dirHandle, name){
-      return name ? await dirHandle.getDirectoryHandle(name, { create:true }) : dirHandle;
-    }
-
-    async function listSubdirs(){
-      if(!dirHandle) return [];
-      const dirs = [];
-      for await (const [name, handle] of dirHandle.entries()){
-        if(handle.kind === 'directory') dirs.push({ name, handle });
-      }
-      const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
-      dirs.sort((a,b)=>coll.compare(a.name,b.name));
-      return dirs;
-    }
-    async function getGroupDirHandle(group){
-      if(!dirHandle) return null;
-      if(!group || group === BASE_GROUP) return dirHandle;
-      try { return await dirHandle.getDirectoryHandle(group); }
-      catch { return null; }
-    }
-
-    // Helper: ensure all subdirs for a relative path, return { dir, filename }
-    async function ensurePath(dirHandle, relPath){
-      // Normalize and split the relative path into parts; last part is filename
-      const clean = String(relPath||'').replace(/^\/*/,'').replace(/^library\//,'');
-      const parts = clean.split('/').filter(Boolean);
-      let dir = dirHandle;
-      for(let i=0;i<parts.length-1;i++){
-        const seg = parts[i];
-        dir = await dir.getDirectoryHandle(seg, { create:true });
-      }
-      const filename = parts[parts.length-1] || '';
-      return { dir, filename };
-    }
-    async function fileExists(dir, filename){
-      try { await dir.getFileHandle(filename); return true; }
-      catch { return false; }
-    }
-    async function readFileIfExists(dir, filename){
-      try { const fh = await dir.getFileHandle(filename); const f = await fh.getFile(); return await f.text(); }
-      catch { return null; }
-    }
-
-    // --- Sync Library (repo) into chosen folder ---
+     // --- Sync Library (repo) into IDB only ---
     async function syncLibraryIntoFolder(){
-        showBusy('Downloading sentences...');
-        try{
-          if(!dirHandle){
-          const picked = await chooseSentencesFolder();
-          if(!dirHandle) return; // user cancelled
-        }
+      showBusy('Downloading sentences...');
+      try{
         let index;
-        try {
-          index = await fetchJSONScoped(LIB_INDEX_URL);
-        } catch (e) {
-          showToast('Library index not available');
-          return;
-        }
+        try { index = await fetchJSONScoped(LIB_INDEX_URL); }
+        catch (e) { showToast('Library index not available'); return; }
         const files = index.files || [];
         if(!files.length){ showToast('Library is empty'); return; }
 
-        const targetDir = await ensureSubdir(dirHandle, LIB_TARGET_SUBDIR);
         let wrote = 0, skipped = 0, errors = 0;
 
         for(const item of files){
           const rel = typeof item === 'string' ? item : (item.path || item.file || item.name);
           if(!rel) continue;
           try{
-            // Normalize relative path under /library (remote) and local dir structure
             const relNorm = String(rel).replace(/^library\//,'').replace(/^\/*/,'');
-            const { dir, filename } = await ensurePath(targetDir, relNorm);
-
-            // Fetch the remote text using the same relative structure under /library
             const libText = await fetchTextScoped('library/' + relNorm);
+            const path = relNorm; // store under same relative path in IDB
 
             if(SYNC_POLICY === 'addNewOnly'){
-              if(await fileExists(dir, filename)){ skipped++; continue; }
-              const fh = await dir.getFileHandle(filename, { create:true });
-              const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
+              let current = null;
+              try { current = await storage.readFile(path); } catch {}
+              if(current != null){ skipped++; continue; }
+              await storage.writeFile(path, libText); wrote++; continue;
             }
 
             if(SYNC_POLICY === 'overwriteChanged'){
-              const current = await readFileIfExists(dir, filename);
-              if(current !== null && current === libText){ skipped++; continue; }
-              const fh = await dir.getFileHandle(filename, { create:true });
-              const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++; continue;
+              let current = null;
+              try { current = await storage.readFile(path); } catch {}
+              if(current != null){
+                const curTxt = await normalizeReadResult(current);
+                if(curTxt === libText){ skipped++; continue; }
+              }
+              await storage.writeFile(path, libText); wrote++; continue;
             }
 
             // 'forceOverwriteAll'
-            const fh = await dir.getFileHandle(filename, { create:true });
-            const ws = await fh.createWritable(); await ws.write(libText); await ws.close(); wrote++;
+            await storage.writeFile(path, libText); wrote++;
           }catch(err){
             console.warn('Sync fail', rel, err);
             errors++;
@@ -901,124 +584,45 @@ Excuse me"></textarea><br>
       }
     }
 
-    // --- IndexedDB for persisting FileSystemHandles ---
-    const DB_NAME='sc_fs_db', STORE='handles';
-    function idbOpen(){
-      return new Promise((resolve, reject)=>{
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = (e)=>{ e.target.result.createObjectStore(STORE); };
-        req.onsuccess = ()=> resolve(req.result);
-        req.onerror = ()=> reject(req.error);
-      });
-    }
-    async function idbSet(key, value){
-      const db = await idbOpen();
-      return new Promise((resolve, reject)=>{
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.oncomplete=()=>resolve();
-        tx.onerror=()=>reject(tx.error);
-        tx.objectStore(STORE).put(value, key);
-      });
-    }
-    async function idbGet(key){
-      const db = await idbOpen();
-      return new Promise((resolve, reject)=>{
-        const tx = db.transaction(STORE, 'readonly');
-        const req = tx.objectStore(STORE).get(key);
-        req.onsuccess=()=>resolve(req.result);
-        req.onerror=()=>reject(req.error);
-      });
-    }
-    async function idbDel(key){
-      const db = await idbOpen();
-      return new Promise((resolve, reject)=>{
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.oncomplete=()=>resolve();
-        tx.onerror=()=>reject(tx.error);
-        tx.objectStore(STORE).delete(key);
-      });
-    }
-
     async function populateGroupSelect(){
       const row = $('groupsRow');
       const sel = $('groupSelect');
       const prevGroup = currentGroup;
 
-      // ===== IDB driver: list groups from IndexedDB =====
-      if (DRIVER === 'idb') {
-        try{
-          const groups = await storage.listGroups(); // e.g., ['__base__','miku',...]
-          const hasSub = groups.some(g => g !== BASE_GROUP);
+      try{
+        const groups = await storage.listGroups(); // e.g., ['__base__','miku',...]
+        const hasSub = groups.some(g => g !== BASE_GROUP);
 
-          if(!hasSub){
-            // No subfolders in IDB → hide row, lock to <base>
-            row.style.display='none';
-            sel.disabled = true;
-            sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
-            currentGroup = BASE_GROUP;
-          } else {
-            row.style.display='';
-            sel.disabled = false;
-            sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
-            for(const g of groups){
-              if(g === BASE_GROUP) continue;
-              const opt = document.createElement('option');
-              opt.value = g;
-              opt.textContent = truncateString(g);
-              opt.title = g;
-              sel.appendChild(opt);
-            }
-            const saved = localStorage.getItem(SELECTED_GROUP_KEY) || prevGroup || BASE_GROUP;
-            const names = new Set(groups);
-            const toSet = names.has(saved) ? saved : BASE_GROUP;
-            sel.value = toSet;
-            currentGroup = toSet;
+        if(!hasSub){
+          // No subfolders in IDB → hide row, lock to <base>
+          row.style.display='none';
+          sel.disabled = true;
+          sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+          currentGroup = BASE_GROUP;
+        } else {
+          row.style.display='';
+          sel.disabled = false;
+          sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+          for(const g of groups){
+            if(g === BASE_GROUP) continue;
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = truncateString(g);
+            opt.title = g;
+            sel.appendChild(opt);
           }
-
-          if (currentGroup !== prevGroup && !booting) await populateSetSelectFromDir('');
-          return; // important: don't fall through to FS branch
-        }catch(e){
-          console.warn('[idb] populateGroupSelect failed', e);
-          // fall through to FS branch if something went wrong
+          const saved = localStorage.getItem(SELECTED_GROUP_KEY) || prevGroup || BASE_GROUP;
+          const names = new Set(groups);
+          const toSet = names.has(saved) ? saved : BASE_GROUP;
+          sel.value = toSet;
+          currentGroup = toSet;
         }
-      }
 
-      // ===== FS driver (existing behavior) =====
-      if(!dirHandle){
-        row.style.display='none';
-        sel.disabled=true;
-        currentGroup = BASE_GROUP;
         if (currentGroup !== prevGroup && !booting) await populateSetSelectFromDir('');
         return;
+      }catch(e){
+        console.warn('[idb] populateGroupSelect failed', e);
       }
-
-      const dirs = await listSubdirs();
-      if(!dirs.length){
-        row.style.display='none';
-        sel.disabled=true;
-        currentGroup = BASE_GROUP;
-        sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
-        if (currentGroup !== prevGroup && !booting) await populateSetSelectFromDir('');
-        return;
-      }
-
-      row.style.display='';
-      sel.disabled = false;
-      const prev = sel.value || currentGroup || BASE_GROUP;
-      sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
-      for(const d of dirs){
-        const opt = document.createElement('option');
-        opt.value = d.name;
-        opt.textContent = truncateString(d.name);
-        opt.title = d.name;
-        sel.appendChild(opt);
-      }
-      const names = new Set([BASE_GROUP, ...dirs.map(d=>d.name)]);
-      const toSet = names.has(prev) ? prev : BASE_GROUP;
-      sel.value = toSet;
-      currentGroup = toSet;
-
-      if (currentGroup !== prevGroup) await populateSetSelectFromDir('');
     }
 
     async function populateSetSelectFromDir(selected = ''){
@@ -1078,19 +682,12 @@ Excuse me"></textarea><br>
 
     // Read one deck’s text (raw file) and return parsed pairs (header ignored).
     async function readDeckPairsForSlug(slug){
-      if (DRIVER === 'idb') {
-        const filename = filenameFromSlug(slug);
-        const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
-        const stored   = idbPathBySlug.get(slug);
-        const path     = stored || computed;
-        const raw = await storage.readFile(path);
-        const txt = await normalizeReadResult(raw);
-        return parsePairs(txt);
-      }
-      // FS path (unchanged)
-      const base = await getGroupDirHandle(currentGroup);
-      const fh   = await base.getFileHandle(filenameFromSlug(slug));
-      const txt  = await readFileText(fh);
+      const filename = filenameFromSlug(slug);
+      const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+      const stored   = idbPathBySlug.get(slug);
+      const path     = stored || computed;
+      const raw = await storage.readFile(path);
+      const txt = await normalizeReadResult(raw);
       return parsePairs(txt);
     }
 
@@ -1420,26 +1017,15 @@ Excuse me"></textarea><br>
 
     async function getJPListForSlug(slug){
       try{
-        if (DRIVER === 'idb') {
-          const filename = filenameFromSlug(slug);
-          const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
-          const stored   = idbPathBySlug.get(slug);
-          const path     = stored || computed;
-
-          const raw = await storage.readFile(path);
-          const t   = await normalizeReadResult(raw);
-          const pairs = parsePairs(t);
-          return pairs.map(p=>p[0]).filter(Boolean);
-        }
-        if(!dirHandle) return [];
-        const base = await getGroupDirHandle(currentGroup);
-        const fh = await base.getFileHandle(filenameFromSlug(slug));
-        const t = await readFileText(fh);
+        const filename = filenameFromSlug(slug);
+        const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+        const stored   = idbPathBySlug.get(slug);
+        const path     = stored || computed;
+        const raw = await storage.readFile(path);
+        const t   = await normalizeReadResult(raw);
         const pairs = parsePairs(t);
         return pairs.map(p=>p[0]).filter(Boolean);
-      }catch{
-        return [];
-      }
+      }catch{ return []; }
     }
 
     async function startMarqueeFromSelected(){
@@ -1901,9 +1487,6 @@ Excuse me"></textarea><br>
     function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
 
     async function startSession(){
-      if (DRIVER === 'fs') {
-        if(!dirHandle){ await chooseSentencesFolder(); if(!dirHandle) return; }
-      }
       const userText = $('pairs').value.trim();
       const lines = userText.split(/\r?\n/);
       const m = (lines[0]||'').match(/^\s*name:\s*(.+)/i);
@@ -2266,9 +1849,6 @@ Excuse me"></textarea><br>
       document.body.classList.remove('hasBar');
       $('inputCard').style.display='block';
 
-      // Re-enable card select if we had disabled it
-      if (dirHandle) $('setSelect').disabled = false;
-
       // Keep state name/slug as-is; we only leave session mode
       state.done = false;
 
@@ -2399,6 +1979,58 @@ Excuse me"></textarea><br>
       return `NAME: New Deck\n\n${text}`;
     }
 
+    // Save the current textarea to file (IDB) using Working Deck header, overwriting if needed
+    async function saveCurrentTextareaToFile(){
+      try{
+        const ta = $('pairs');
+        if(!ta){ showToast('No textarea'); return; }
+
+        // Normalize to ensure a valid NAME header
+        let text = ensureNameHeader(ta.value || '');
+
+        // Extract display name from header (without counts)
+        const header = headerNameFromTextarea();
+        const displayName = titleCase(header || 'New Deck');
+
+        // Decide target slug per spec (Working Deck header is authoritative; overwrites allowed)
+        const selected = readSelectedSlugs();
+        let targetSlug;
+        if (selected.length === 1){
+          const chosen = selected[0];
+          const baselineDisplay = titleCase(slugToNiceName(chosen));
+          // If header matches the chosen slug's display name → overwrite that slug
+          targetSlug = (displayName === baselineDisplay) ? chosen : slugify(displayName);
+        } else {
+          // No single selection → derive from header
+          targetSlug = slugify(displayName);
+        }
+
+        // Compute IDB path for this slug in the current group
+        const filename = filenameFromSlug(targetSlug);
+        const path = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+
+        // Write to IDB (overwrite allowed without warning)
+        await storage.writeFile(path, text);
+
+        showToast('Saved');
+
+        // Refresh lists and select the saved deck
+        await populateGroupSelect();
+        await populateSetSelectFromDir(targetSlug);
+
+        // Persist Home state to reflect the save
+        const hs = loadHomeState();
+        hs.group = currentGroup || '__base__';
+        hs.cards = [targetSlug];
+        hs.text  = text; // Working Deck remains authoritative
+        saveHomeState(hs);
+        updateStartEnabled();
+      }catch(err){
+        console.warn('saveCurrentTextareaToFile failed', err);
+        showToast('Save failed');
+      }
+    }
+
     async function newDeckFromClipboard(){
       // Build from Difficult list (no clipboard needed)
       const list = loadDifficult();
@@ -2480,7 +2112,7 @@ Excuse me"></textarea><br>
     $('shuffleTopBtn').onclick = ()=>{ cancelCardTimers(); shuffleDeck(); scheduleCardTimer(); };
     $('selectBtn').onclick = ()=>{ cancelCardTimers(); selectJapanese(); };
     $('backBtnTop').onclick=back;
-    $('switchFolderBtn').onclick = () => { chooseSentencesFolder();};
+    $('saveBtn').onclick = async () => { await saveCurrentTextareaToFile(); };
 
     $('pauseBtn').onclick = () => {
       if (getPhaseSeconds() === 0) return; // no-op when timer disabled
@@ -2489,25 +2121,21 @@ Excuse me"></textarea><br>
     };
 
     $('syncLibraryBtn').onclick = async () => {
-      if (DRIVER === 'idb') {
-        showBusy('Downloading library…');
-        try{
-          await storage.init();
-          const r = await storage.syncFromManifest('library/index.json');
-          showToast(`Synced: ${r.wrote} files${r.errors?`, ${r.errors} errors`:''}`);
-          // Refresh Groups & Cards from IDB
-          await populateGroupSelect();
-          await populateSetSelectFromDir('');
-        }catch(e){
-          console.warn(e);
-          showToast('IDB sync failed');
-        } finally {
-          hideBusy();
-        }
-        return;
+      showBusy('Downloading library…');
+      try{
+        await storage.init();
+        const r = await storage.syncFromManifest('library/index.json');
+        showToast(`Synced: ${r.wrote} files${r.errors?`, ${r.errors} errors`:''}`);
+
+        await populateGroupSelect();
+        await populateSetSelectFromDir('');
+      }catch(e){
+        console.warn(e);
+        showToast('IDB sync failed');
+      } finally {
+        hideBusy();
       }
-      // FS mode
-      syncLibraryIntoFolder();
+      return;
     };
 
     $('marqueeBtnStart').onclick = startMarqueeFromSelected;
@@ -2554,18 +2182,11 @@ Excuse me"></textarea><br>
 
       let text = '';
       try{
-        if (DRIVER === 'idb'){
-          // Prefer exact path from IDB listing
-          const stored = idbPathBySlug.get(slug);
-          const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
-          const path = stored || computed;
-          const raw = await storage.readFile(path);
-          text = await normalizeReadResult(raw);
-        } else {
-          const base = await getGroupDirHandle(currentGroup);
-          const fh = await base.getFileHandle(filename);
-          text = await readFileText(fh);
-        }
+        const stored = idbPathBySlug.get(slug);
+        const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+        const path = stored || computed;
+        const raw = await storage.readFile(path);
+        text = await normalizeReadResult(raw);
       }catch(e){
         alert('Failed to read file. Did it move or get renamed?');
         console.warn('[read]', e);
@@ -2682,92 +2303,28 @@ Excuse me"></textarea><br>
 
     (async function init(){
       $('setSelect').disabled = true;
-
-      if (DRIVER === 'idb') {
-        try{
-          await storage.init();
-          // First visit? Pull library into IDB.
-          // (You can skip auto-sync if you prefer manual-only.)
-          try{
-            await storage.syncFromManifest('library/index.json');
-          }catch(e){
-            console.warn('[idb] initial sync failed', e);
-          }
-          await populateGroupSelect();
-          await populateSetSelectFromDir('');
-          showToast('IDB mode ready');
-        }catch(e){
-          console.warn(e);
-          showToast('IDB init failed');
-        }
-        updateStartEnabled();
-
-        applyViewFont();
-        updateViewerLayout();
-        return;
-      }
-
       try{
-        const h = await idbGet('sentencesDir');
-        if(h){
-          dirHandle = h;
-          const q = await dirHandle.queryPermission({ mode:'readwrite' });
-          if(q==='granted'){
-            $('setSelect').disabled = false;
-            await populateGroupSelect();
-
-            // Restore previously selected group (if it exists)
-            try{
-              const savedGroup = localStorage.getItem(SELECTED_GROUP_KEY);
-              if(savedGroup){
-                const sel = $('groupSelect');
-                if([...sel.options].some(o=>o.value===savedGroup)){
-                  sel.value = savedGroup;
-                  currentGroup = savedGroup;
-                } else {
-                  currentGroup = BASE_GROUP;
-                  sel.value = BASE_GROUP;
-                }
-              }
-            }catch{}
-
-            await populateSetSelectFromDir();
-
-            // Restore previously selected card (if it exists in this group)
-            try{
-              const savedCard = localStorage.getItem(SELECTED_CARD_KEY);
-              if(savedCard){
-                const sel = $('setSelect');
-                if([...sel.options].some(o=>o.value===savedCard)){
-                  sel.value = savedCard;
-                  // Load its content into textarea (same logic as onchange)
-                  const base = await getGroupDirHandle(currentGroup);
-                  const fh = await base.getFileHandle(filenameFromSlug(savedCard));
-                  let t = await readFileText(fh);
-                  const name = titleCase(slugToNiceName(savedCard));
-                  const pairs = parsePairs(t);
-                  t = normalizeDeckTop(t, name, 1, pairs.length);
-                  $('pairs').value = t;
-                } else {
-                  try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}
-                }
-              }
-            }catch{}
-
-            updateStartEnabled();
-            showToast('Folder restored');
-          } else {
-            // On mobile, permission prompts often require a user gesture
-            showToast('Tap 🔌 to reconnect folder');
-          }
-          updateStartEnabled();
+        await storage.init();
+        // First visit? Pull library into IDB.
+        // (You can skip auto-sync if you prefer manual-only.)
+        try{
+          await storage.syncFromManifest('library/index.json');
+        }catch(e){
+          console.warn('[idb] initial sync failed', e);
         }
-      }catch(err){ /* ignore */ }
-      applyCarModeUI();
-      updatePauseButtonEnabled();
+        await populateGroupSelect();
+        await populateSetSelectFromDir('');
+        showToast('IDB mode ready');
+      }catch(e){
+        console.warn(e);
+        showToast('IDB init failed');
+      }
+      updateStartEnabled();
 
       applyViewFont();
       updateViewerLayout();
+      return;
+
     })();
   </script>
 
