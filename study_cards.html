@@ -370,14 +370,7 @@ Excuse me"></textarea><br>
       await restoreHomeStateIfAny();
 
       // 3) Wire home-state persistence
-      $('groupSelect')?.addEventListener('change', async (e)=>{
-        const sel = e.currentTarget;
-        const val = (sel && sel.value) ? sel.value : '__base__';
-        currentGroup = val;
-        try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
-        await populateSetSelectFromDir(''); // rebuild Deck list immediately (mobile-friendly)
-        saveHomeStateFromUI();              // persist new selection + any textarea
-      });
+      $('groupSelect')?.addEventListener('change', onGroupChange);
       $('setSelect')?.addEventListener('change', saveHomeStateFromUI);
       $('pairs')?.addEventListener('input',  saveHomeStateFromUI);
 
@@ -1659,6 +1652,17 @@ Excuse me"></textarea><br>
       return Array.from(sel.selectedOptions).map(o=>o.value).filter(Boolean);
     }
 
+    function onGroupChange(e){
+      const sel = e?.currentTarget || $('groupSelect');
+      const val = (sel && sel.value) ? sel.value : '__base__';
+      currentGroup = val;
+      try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
+      // Rebuild Deck list immediately (mobile-friendly), then persist state
+      return populateSetSelectFromDir('')
+        .then(()=>{ saveHomeStateFromUI(); })
+        .catch(()=>{ saveHomeStateFromUI(); });
+    }
+
     function saveHomeStateFromUI(){
       try{
         const hs = loadHomeState();
@@ -2255,15 +2259,6 @@ Excuse me"></textarea><br>
         marquee.loop = { a:null, b:null, enabled:false, stage:0 }; showToast('Loop reset');
       }
       updateABButtonLabel();
-    };
-
-    $('groupSelect').onchange = async function(){
-      currentGroup = this.value || BASE_GROUP;
-      try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
-      try{ localStorage.removeItem(SELECTED_CARD_KEY); }catch{}  // clear stale card
-      await populateSetSelectFromDir('');
-      $('pairs').value = '';
-      updateStartEnabled();
     };
 
     // Tap panels to adjust font: Prompt = bigger, Answer = smaller
