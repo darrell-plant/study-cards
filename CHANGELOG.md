@@ -12,7 +12,7 @@ All notable changes to **Study Cards** will be documented in this file.
 ### Fixed
 -
 
-## [v1.2.1]
+## [v1.2.1] — 2025-10-20
 ### Added
 - Large Pause/Continue button in car mode session screen
 - Consistent session restore on app reload
@@ -89,6 +89,7 @@ All notable changes to **Study Cards** will be documented in this file.
 ## Versioning
 This project uses **Semantic Versioning**: MAJOR.MINOR.PATCH.
 
+[v1.2.1]: https://github.com/darrell-plant/study-cards/releases/tag/v1.2.1
 [v1.1.2]: https://github.com/darrell-plant/study-cards/releases/tag/v1.1.2
 [v1.1.1]: https://github.com/darrell-plant/study-cards/releases/tag/v1.1.1
 [v1.1.0]: https://github.com/darrell-plant/study-cards/releases/tag/v1.1.0
