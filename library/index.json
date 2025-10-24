@@ -59,6 +59,7 @@
     ,{ "path": "n3_course/19._hearsay_conjecture.data" }
     ,{ "path": "n3_course/20._negation_partial_negation.data" }
     ,{ "path": "n3_course/21._degree_comparison_contrast.data" }
+    ,{ "path": "n3_course/22._topic.data" }
     ,{ "path": "test/ascii_only.data" }
     ,{ "path": "test/seq_test.data" }
     ,{ "path": "various/aiki_and_bjj_terms.data" }
