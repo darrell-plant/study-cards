@@ -1,9 +1,13 @@
 // sw.js
-const CACHE = 'sc-v39';
+const CACHE = 'sc-v40';
+
+const VERSION_ENDPOINT = 'version.txt';
+const VERSION_PATHNAME = new URL(VERSION_ENDPOINT, self.registration.scope).pathname;
 
 // Put only files that truly exist next to sw.js (add icons if you have them)
 const ASSETS = [
-  'study_cards.html',
+  "./",
+  'index.html',
   'manifest.webmanifest',
   'library/index.json',
   'assets/icon-192.v3.png',
@@ -42,24 +46,93 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  // Handle only same-origin GET requests
-  if (req.method !== 'GET') return;
-  if (new URL(req.url).origin !== self.location.origin) return;
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  // Serve a plain-text version string from the SW (uses CACHE)
+  try {
+    const url = new URL(event.request.url);
+    if (url.origin === location.origin && url.pathname === VERSION_PATHNAME) {
+      event.respondWith(new Response(CACHE, {
+        status: 200,
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'cache-control': 'no-store'
+        }
+      }));
+      return;
+    }
+  } catch (_) {}
 
+  // Always try network first for navigations/HTML so index.html is never stale
+  const isHTML =
+    request.mode === "navigate" ||
+    (request.headers.get("accept") || "").includes("text/html");
+
+  if (isHTML) {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          // Optionally cache the fresh HTML (not required, but fine)
+          const okFull = res.ok && res.status === 200 && res.type === "basic";
+          if (okFull) {
+            const resClone = res.clone();
+            caches.open(CACHE).then((c) => c.put(request, resClone));
+          }
+          return res;
+        })
+        .catch(() => {
+          // Fallback to cache (./ or cached index.html) when offline
+          return caches.match(request).then((hit) => hit || caches.match("./"));
+        })
+    );
+    return;
+  }
+
+  // Cache-first for library files (sentence decks)
+  if (request.url.includes("/library/")) {
+    return cacheFirst(event, request);
+  }
+
+  // Cache-first for app icons
+  if (request.url.includes('/assets/')) {
+    return cacheFirst(event, request);
+  }
+
+  // Cache-first for the PWA manifest
+  if (request.url.endsWith('manifest.webmanifest')) {
+    return cacheFirst(event, request);
+  }
+
+  // Network-first for everything else
   event.respondWith(
-    fetch(req).then((res) => {
-      // Update cache in background
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-      return res;
-    }).catch(async () => {
-      // Offline fallback: if it's a navigation, show main HTML
-      if (req.mode === 'navigate') {
-        return caches.match(toScopedURL('study_cards.html'));
-      }
-      return caches.match(req);
-    })
+    fetch(request)
+      .then((res) => {
+        const isPartial = res.status === 206 || res.headers.has('Content-Range');
+        const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
+        if (canCache) {
+          const resClone = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, resClone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(request))
   );
 });
+
+function cacheFirst(event, request) {
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((res) => {
+        const isPartial = res.status === 206 || res.headers.has('Content-Range');
+        const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
+        if (canCache) {
+          const resClone = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, resClone));
+        }
+        return res;
+      });
+    })
+  );
+  return;
+}

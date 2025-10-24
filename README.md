@@ -45,7 +45,7 @@ Excuse me
 - Multi-select Cards: select multiple Sets to study or combine; the textarea and session work with all selected files.
 
 ## 🛠 Development
-- Built as a single-page HTML/JS app (`study_cards.html`).
+- Built as a single-page HTML/JS app
 - Uses:
   - IndexedDB for persistent storage and offline library sync
   - localStorage for progress and session state

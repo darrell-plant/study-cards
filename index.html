@@ -1,5 +1,2433 @@
-<!doctype html>
-<meta charset="utf-8">
-<title>Study Cards</title>
-<meta http-equiv="refresh" content="0; url=./study_cards.html">
-<p>If you are not redirected, <a href="./study_cards.html">open Study Cards</a>.</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png" />
+  <link rel="shortcut icon" href="favicon.ico" />
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b0f14">
+  <!-- Inline SVG favicon to prevent 404s and provide an emoji icon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎴</text></svg>">
+
+  <title>Study Cards</title>
+  <style>
+    :root{ --bar-h: 76px; }
+    body{font-family:sans-serif;background:#0b0f14;color:#ae9b1c;margin:0}
+
+    .wrap{ padding:1rem; }
+    .hasBar .wrap{
+      padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));
+    }
+
+    textarea{width:100%;min-height:200px;box-sizing:border-box;}
+    button{margin:0.20rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#facc15;cursor:pointer}
+    button:hover{filter:brightness(1.08)}
+    /* Disabled buttons look clearly inactive */
+    button:disabled{
+      background:#111827;          /* darker gray */
+      color:#94a3b8;               /* muted text */
+      border-color:#263241;        /* dim border */
+      opacity:.65;
+      cursor:not-allowed;
+      filter:none;                 /* cancel hover brightening */
+    }
+    button:disabled:hover{ filter:none; }
+    .iconBtn{padding:0.45rem 0.6rem; line-height:1; border-radius:10px}
+
+    /* Car-mode Pause/Continue styling (taller + bigger text) */
+    #pauseBtn {
+      font-size: 1.6rem;
+      background: #a78bfa;
+      color: #1b1130;
+      border: 2px solid #c4b5fd;
+      text-align: center;
+      justify-content: center;
+      display: flex;
+      align-items: center;
+      transition: opacity .18s ease, transform .18s ease, background .25s ease, color .25s ease, border-color .25s ease;
+    }
+
+    /* Gentle red when paused (label = Continue) */
+    #pauseBtn.paused {
+      background: #f87171; /* soft red */
+      color: #1b1111;
+      border-color: #fca5a5;
+    }
+
+    /* Brief fade/scale when swapping labels */
+    #pauseBtn.fading{
+      opacity: .25;
+      transform: scale(0.985);
+    }
+
+    .card{border:1px solid #333;padding:0.5rem;margin:0rem;border-radius:12px;background:#121922;box-sizing:border-box}
+
+    .reviewItem{ padding:.5rem .6rem; border-bottom:1px solid #263241; }
+    .reviewItem .slug{ color:#93c5fd; font-weight:600; margin-bottom:.2rem; }
+    .reviewItem .jp{ color:#a3e635; }
+    .reviewItem .en{ color:#facc15; }
+
+    /* Car mode alters card background */
+    body.carMode .card{ background:#570f06; }
+
+    /* Show/hide Pause only by carMode */
+    body:not(.carMode) #pauseBtn { display:none !important; }
+    body.carMode #pauseBtn { display:inline-flex; }
+
+    /* Layout of Pause button within the action bar */
+    @media (orientation: portrait){
+      body.carMode #pauseBtn{
+        order:-1;           /* ensure it appears before the other buttons */
+        flex: 1 1 100%;     /* full width on its own row */
+      }
+      /* Give extra bottom space in portrait when we have two rows */
+      body.carMode { --bar-h: 148px; }
+    }
+    @media (orientation: landscape){
+      body.carMode #pauseBtn{
+        order:-1;           /* placed before the other buttons */
+        flex: 1 1 50%;      /* half width to the left of other actions */
+        max-width:50%;
+      }
+    }
+
+    .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+    /* Top controls (session header) */
+    .topBtn{
+      margin: 0.10rem;
+      padding: 0.6rem 1.0rem;
+      border-radius: 12px;
+      border: 2px solid #f3a404a3;
+      background: #1f2937;
+      color: #facc15;
+      cursor: pointer;
+      text-align:center;
+    }
+    .exitBtn {
+        background: #facc15;
+        color: #3b0707;
+        border: 2px solid #f3a404a3;
+        font-weight: bold;
+    }
+    .exitBtn:hover {
+      background: #f3a404a3;
+    }
+
+    #timerBtn.topBtn {
+      min-width:58px;
+    }
+
+    .viewerBox{display:grid;gap:10px}
+    /* Enable custom horizontal gestures without fighting browser scroll */
+    .viewerBox{ touch-action: pan-y; }
+    .viewerBox .viewerPanel{ touch-action: pan-y pinch-zoom; }
+    .viewerBox .viewerPanel{
+      height:26vh;min-height:26vh;max-height:26vh;
+      background:#0f1722;border:1px solid #243244;border-radius:12px;
+      padding:12px;font-size:2.0rem;line-height:1.6;width:100%;box-sizing:border-box;
+      white-space:pre-wrap;user-select:text;overflow:auto;
+    }
+    @media (orientation: portrait){
+      .viewerBox .viewerPanel{
+        height:38vh;min-height:38vh;max-height:38vh;
+      }
+    }
+    /* Single-panel mode (large font) */
+    .viewerBox.single .viewerPanel{ display:none; }
+    .viewerBox.single.showPrompt #promptArea{ display:block; }
+    .viewerBox.single.showAnswer #answerArea{ display:block; }
+    /* Size the single panel to roughly the combined height of two panels */
+    .viewerBox.single .viewerPanel{
+      height:59vh; min-height:59vh; max-height:59vh;
+    }
+    @media (orientation: portrait){
+      .viewerBox.single .viewerPanel{
+        height:72vh; min-height:72vh; max-height:72vh;
+      }
+    }
+    #promptArea{color:#a3e635;}
+    #answerArea{color:#facc15;}
+
+    .bar{position:fixed;left:0;right:0;bottom:0;min-height:var(--bar-h);
+      display:flex;align-items:center;justify-content:flex-end;gap:.4rem;
+      flex-wrap:wrap;
+      padding:0.6rem max(0.8rem, env(safe-area-inset-right));
+      padding-bottom:calc(0.6rem + env(safe-area-inset-bottom, 0px));
+      background:linear-gradient(180deg,rgba(11,15,20,.0) 0%,#0b0f14 12%,#0b0f14 100%);
+      border-top:1px solid #1f2a36;box-sizing:border-box}
+    .bar .go{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#3fb950;color:#06200c;border:1px solid #46c35f;min-width:85px;text-align:center}
+    .bar .back{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#38bdf8;color:#042635;border:1px solid #7dd3fc}
+    .bar .scroll{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#facc15;color:#1f1300;border:1px solid #fde68a}
+    .bar .select{font-size:1.0rem;padding:0.9rem 1.1rem;border-radius:16px;background:#fb923c;color:#1f1205;border:1px solid #fdba74}
+    .bar .go:active,.bar .back:active,.bar .scroll:active{transform:translateY(1px)}
+    .bar .aux{background:#1f2937}
+
+    h1{margin:1rem}
+
+    /* Saved sets label */
+    label[for="setSelect"], .sectionLabel{ color:#facc15; font-weight:bold; }
+
+    .inline-group{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+
+    /* Hint paragraph colour */
+    .hint{ color:#ae9b1c; }
+    select:disabled{ opacity:.55; filter:saturate(.6); }
+
+    /* Blocking busy overlay */
+    .modalBackdrop{position:fixed;inset:0;background:rgba(2,6,12,.72);display:none;align-items:center;justify-content:center;z-index:9999}
+    .modalBox{background:#0f1722;border:1px solid #334155;border-radius:14px;padding:1rem 1.2rem;color:#fefce8;box-shadow:0 10px 28px rgba(0,0,0,.45);min-width:240px;text-align:center}
+    .modalBox .spinner{display:inline-block;width:1em;height:1em;border:.18em solid #334155;border-top-color:#3fb950;border-radius:50%;animation:spin 1s linear infinite;margin-right:.5rem;vertical-align:-.14em}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* Toast */
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%) translateY(6px);
+      bottom:calc(var(--bar-h) + 16px);
+      background:#1f2937; color:#fefce8; border:1px solid #334155;
+      padding:.55rem .8rem; border-radius:12px; font-size:.95rem;
+      opacity:0; pointer-events:none; transition:opacity .18s, transform .18s;
+      box-shadow:0 6px 20px rgba(0,0,0,.35);
+    }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* ===== Marquee mode ===== */
+    .marqueeWrap{display:flex;flex-direction:column;height:100vh;padding:1rem;box-sizing:border-box}
+    #marqueeViewport{flex:2;min-height:66vh;background:#0f1722;border:1px solid #243244;border-radius:12px;overflow:hidden;display:flex;align-items:center;position:relative}
+    #marqueeRepeat{position:absolute;top:6px;left:10px;font-size:2rem;font-weight:700;color:#facc15;opacity:.95;user-select:none}
+    #marqueeIndex{
+      position:absolute; top:6px; right:10px;
+      font-size:2rem; font-weight:700;
+      color:#facc15; opacity:.95; user-select:none;
+      display:none; /* hidden by default; shown for multi */
+    }
+    #marqueeText{white-space:nowrap;will-change:transform;display:inline-block;padding:0 2rem;font-weight:600;color:#facc15}
+    .marqueeControls{flex:1;display:flex;gap:.5rem;align-items:center;justify-content:center}
+    .ctrlBtn{
+      font-size:1.15rem;
+      border-radius:14px;
+      background:#1f2937;
+      color:#fefce8;
+      border:1px solid #334155;
+      /* normalize size across emoji/text labels */
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      height:56px;           /* pick a consistent height */
+      min-width:56px;        /* square-ish for icon-only */
+      padding:0 14px;        /* horizontal breathing room */
+      line-height:1;         /* avoid emoji baseline variance */
+      vertical-align:middle; /* align in rows nicely */
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .ctrlBtn.scroll{background:#facc15;color:#1f1300;border:1px solid #fde68a}
+
+    /* Marquee fullscreen overlay */
+    #marqueeCard.fullscreen{ position:fixed; inset:0; margin:0; border-radius:0; padding:0; z-index:1000; }
+    /* Keep control buttons inside and wrap on small screens */
+    .marqueeControls{ flex-wrap:wrap; padding:0 1rem 1rem; box-sizing:border-box }
+
+    /* Subtle build label footer */
+    .appFooter {
+      position: sticky;
+      bottom: 0;
+      z-index: 10;
+      padding: 10px 12px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      background: linear-gradient(180deg, rgba(10,13,18,0), rgba(10,13,18,0.85));
+      border-top: 1px solid var(--border-soft);
+    }
+    .buildTag { opacity: 0.9; }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="inputCard" class="card">
+      <h1 id="headerTitle">Study Cards</h1>
+      <p class="hint">
+        Use 🔄 to get the latest sentence files.
+      </p>
+
+      <!-- Library controls -->
+      <div class="inline-group">
+        <span class="sectionLabel" aria-hidden="true">Library</span>
+        <button id="syncLibraryBtn" class="iconBtn" title="Sync library into folder" aria-label="Sync library into folder">🔄</button>
+      </div>
+
+      <!-- Groups controls (shown only if subfolders exist) -->
+      <div class="inline-group" id="groupsRow" style="display:none">
+        <label for="groupSelect" class="sectionLabel">Group</label>
+        <select id="groupSelect" disabled>
+          <option value="__base__">&lt;base&gt;</option>
+        </select>
+      </div>
+
+      <!-- Cards controls -->
+      <div class="inline-group">
+        <label for="setSelect">Deck</label>
+        <select id="setSelect" multiple size="4" disabled>
+          <option value="">(none)</option>
+        </select>
+        <button id="deleteSetBtn" class="iconBtn" title="Delete saved state (keeps file)" aria-label="Delete saved state (keeps file)">🗑</button>
+        <button id="deleteFileBtn" class="iconBtn" title="Delete set file (destructive)" aria-label="Delete set file">💀</button>
+      </div>
+      <br>
+
+      <textarea id="pairs" placeholder="NAME: Example
+
+こんにちは
+Hello
+
+ありがとうございます
+Thank you
+
+すみません
+Excuse me"></textarea><br>
+
+      <button id="startBtn" disabled>Start session</button>
+      <button id="marqueeBtnStart" disabled>Scroll</button>
+      <button id="carModeBtn" title="Toggle car mode" aria-label="Toggle car mode">🏠</button>
+      <button id="saveBtn" type="button" title="Save to file" aria-label="Save to file" disabled>💾</button>
+      <!-- Review controls (Home only) -->
+      <div class="inline-group" style="margin-top:.5rem">
+        <button id="reviewBtn" class="actionBtn" title="Review difficult cards" aria-label="Review difficult cards">Review</button>
+      </div>
+    </div>
+
+    <div id="sessionCard" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
+        <div id="progress"></div>
+        <div>
+          <button id="backBtnTop" class="topBtn exitBtn" title="Exit Session">Exit</button>
+          <button id="reverseBtn" class="topBtn" title="Flip JP↔EN for this session">EN</button>
+          <button id="shuffleTopBtn" class="topBtn">Mix</button>
+          <button id="timerBtn" class="topBtn" title="Auto reveal/advance">0s</button>
+        </div>
+      </div>
+
+      <div class="viewerBox">
+        <div id="promptArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
+        <div id="answerArea" class="viewerPanel" role="textbox" aria-readonly="true" tabindex="0"></div>
+      </div>
+
+      <div class="bar" id="actionBar" style="display:none">
+        <button id="pauseBtn" class="topBtn">Pause</button>
+        <button id="marqueeBtnSession" class="scroll">Scroll</button>
+        <button id="selectBtn" class="select">Select</button>
+        <button id="backStepBtn" class="back">Back</button>
+        <button id="goBtn" class="go">Go</button>
+      </div>
+
+    </div>
+
+    <div id="marqueeCard" class="card" style="display:none; padding:0;">
+      <div class="marqueeWrap">
+        <div id="marqueeViewport">
+          <div id="marqueeText" style="font-size:72px;"></div>
+          <div id="marqueeRepeat" title="Repeats per item">3</div>
+          <div id="marqueeIndex"  title="Position"></div>
+        </div>
+        <div class="marqueeControls">
+          <button id="fontDownBtn" class="ctrlBtn">A−</button>
+          <button id="fontUpBtn" class="ctrlBtn">A+</button>
+          <button id="speedDownBtn" class="ctrlBtn">⬇️</button>
+          <button id="speedUpBtn" class="ctrlBtn">⬆️</button>
+          <button id="prevLineBtn" class="ctrlBtn" title="Previous">◀</button>
+          <button id="nextLineBtn" class="ctrlBtn" title="Next">▶</button>
+          <button id="abLoopBtn" class="ctrlBtn" title="Set A / Set B / Reset">a</button>
+          <button id="exitMarqueeBtn" class="ctrlBtn scroll">Exit</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="reviewCard" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between; margin-bottom:.5rem">
+        <div id="reviewCount">Difficult: 0</div>
+        <div>
+          <button id="reviewBackBtn" class="topBtn">Back</button>
+          <button id="reviewClearBtn" class="topBtn">Clear</button>
+          <button id="reviewExportBtn" class="topBtn" title="Copy difficult cards to clipboard">Export</button>
+        </div>
+      </div>
+      <div id="reviewList" class="card" style="max-height:70vh; overflow:auto"></div>
+      <div class="row" style="justify-content:center; margin-top:.6rem">
+        <button id="reviewNewDeckBtn" class="topBtn" title="Create new deck from Difficult">New Deck</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="busy" class="modalBackdrop" role="dialog" aria-live="polite" aria-modal="true">
+    <div class="modalBox"><span class="spinner" aria-hidden="true"></span><span id="busyMsg">Downloading…</span></div>
+  </div>
+
+  <footer class="appFooter" id="appFooter" hidden>
+    <span class="buildTag">Build: <span id="buildId"></span></span>
+  </footer>
+
+
+  <script src="js/idb-driver.js"></script>
+
+<script>
+    // ---- Driver: IDB only ----
+    const DRIVER = 'idb';
+    const HOME_STATE_KEY = 'sc_home_state';     // { group, cards:[slug], text, combinedProgress? }
+    const CAR_MODE_KEY   = 'sc_car_mode';       // '1' | '0'
+
+    document.addEventListener('DOMContentLoaded', initApp);
+    async function initApp(){
+      // 1) Land home: reflect restored carMode visually and wake-lock, but do not persist.
+      applyCarModeUI();
+      if (carMode) { acquireWakeLock(); } else { releaseWakeLock(); }
+
+      // 2) Ensure storage (IDB only)
+      await populateGroupSelect();
+      await restoreHomeStateIfAny();
+
+      // 3) Wire home-state persistence
+      $('groupSelect')?.addEventListener('change', onGroupChange);
+      $('setSelect')?.addEventListener('change', saveHomeStateFromUI);
+      $('pairs')?.addEventListener('input',  saveHomeStateFromUI);
+
+      // 4) Finish boot: allow autosave snapshots
+      booting = false;
+      saveHomeStateFromUI();
+    }
+
+    // ---- Storage drivers
+    const storage = window.idbDriver;
+
+    const $=id=>document.getElementById(id);
+
+    // Current group (subfolder) selection within chosen folder
+    const BASE_GROUP = "__base__";  // UI shows as <base>
+    let currentGroup = BASE_GROUP;
+    const EXT = '.data';            // deck file extension
+
+    // Map slug -> stored IDB path (e.g., "miku/000_test.data")
+    const idbPathBySlug = new Map();
+    // During initial load we suppress auto-saves to avoid overwriting restored state
+    let booting = true;
+    // Car mode (persisted across sessions)
+    let carMode = (localStorage.getItem(CAR_MODE_KEY) === '1'); // restore immediately
+
+    // Session state (must exist early to avoid TDZ when helpers run on load)
+    const state = {
+      cards: [],
+      idx: 0,
+      shown: false,
+      promptSide: 'jp',
+      done: false,
+      setName: '',
+      setSlug: ''
+    };
+
+    function applyCarModeUI(){
+      document.body.classList.toggle('carMode', carMode);
+      const btn = $('carModeBtn');
+      if (btn) btn.textContent = carMode ? '🚗' : '🏠';
+    }
+
+    function setCarMode(on){
+      const next = !!on;
+      // If no change, just ensure UI is in sync and bail.
+      if (next === carMode){
+        applyCarModeUI();
+        return;
+      }
+
+      // During boot, do not persist or touch wake lock; just reflect UI and return.
+      if (booting){
+        carMode = next;
+        applyCarModeUI();
+        return;
+      }
+
+      // Runtime change (user action): persist + adjust font + wake lock.
+      carMode = next;
+      try {
+        localStorage.setItem(CAR_MODE_KEY, carMode ? '1':'0');
+      } catch {}
+
+      // Reset font size based on mode (persist font size itself as usual)
+      viewFontRem = carMode ? 2.6 : 2.0;
+      localStorage.setItem(VIEW_FONT_KEY, String(viewFontRem));
+      applyCarModeUI();
+      applyViewFont();
+      if (carMode) acquireWakeLock(); else releaseWakeLock();
+    }
+
+    // -------- Beep (car-mode only) --------
+    let _audioCtx = null;
+    function ensureAudio(){
+      if(!_audioCtx){
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if(Ctx) _audioCtx = new Ctx();
+      }
+      return _audioCtx;
+    }
+    function playBeep(freq=880, dur=0.08, vol=0.2){
+      if(!carMode) return;                    // only in car-mode
+      const ctx = ensureAudio(); if(!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(vol, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + dur + 0.02);
+    }
+    // Convenience beeps for state changes
+    function beepReveal(){ playBeep(1200, 0.09, 0.4); } // higher pitch on reveal
+    function beepNext(){   playBeep(700,  0.09, 0.4); } // lower pitch on next/return
+
+    // Library sync configuration (repo-hosted files)
+    const LIB_INDEX_URL = 'library/index.json';  // GH Pages path to library manifest
+    const LIB_TARGET_SUBDIR = '';                // write library decks into the chosen folder root
+    const SYNC_POLICY = 'overwriteChanged';      // 'addNewOnly' | 'overwriteChanged' | 'forceOverwriteAll'
+
+    function slugFromFilename(name){
+      return name.replace(/\.[^.]+$/, '');
+    }
+    function filenameFromSlug(slug){
+      return `${slug}${EXT}`;
+    }
+
+    function pathForSlug(slug){
+      const fn = filenameFromSlug(slug);
+      // For IDB, path key is group/filename or filename for base
+      return (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${fn}` : fn;
+    }
+
+    async function listDataFiles(group = currentGroup){
+      const items = await storage.listFiles(group);
+      // Adapt to existing shape: {name, handle}
+      return items.map(it => ({ name: it.name, handle: null, _path: it.path, _display: it.display }));
+    }
+
+    $('deleteFileBtn').onclick = async () => {
+      const slugs = getSelectedSlugs();
+      if(!slugs.length){ showToast('No Card selected'); return; }
+      let n=0, err=0;
+      for(const slug of slugs){
+        try{
+          const stored = idbPathBySlug.get(slug);
+          const path = stored || pathForSlug(slug);
+          await storage.deleteFile(path);
+          try { localStorage.removeItem(keyForSlug(slug)); } catch {}
+          n++;
+        }catch{ err++; }
+      }
+      await populateGroupSelect();
+      await populateSetSelectFromDir('');
+      $('pairs').value = '';
+      updateStartEnabled();
+      showToast(err?`Deleted ${n}, ${err} failed`:`Deleted ${n}`);
+    };
+
+    async function saveViaPickerFallback(filename, text){
+      if(!window.showSaveFilePicker) return false;
+      try{
+        const fh = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'Sentence data', accept: { 'text/plain': ['.data', '.txt'] } }]
+        });
+        const ws = await fh.createWritable();
+        await ws.write(text);
+        await ws.close();
+        showToast('Saved via picker');
+        return true;
+      }catch{
+        return false;
+      }
+    }
+
+     // --- Sync Library (repo) into IDB only ---
+    async function syncLibraryIntoFolder(){
+      showBusy('Downloading sentences...');
+      try{
+        let index;
+        try { index = await fetchJSONScoped(LIB_INDEX_URL); }
+        catch (e) { showToast('Library index not available'); return; }
+        const files = index.files || [];
+        if(!files.length){ showToast('Library is empty'); return; }
+
+        let wrote = 0, skipped = 0, errors = 0;
+
+        for(const item of files){
+          const rel = typeof item === 'string' ? item : (item.path || item.file || item.name);
+          if(!rel) continue;
+          try{
+            const relNorm = String(rel).replace(/^library\//,'').replace(/^\/*/,'');
+            const libText = await fetchTextScoped('library/' + relNorm);
+            const path = relNorm; // store under same relative path in IDB
+
+            if(SYNC_POLICY === 'addNewOnly'){
+              let current = null;
+              try { current = await storage.readFile(path); } catch {}
+              if(current != null){ skipped++; continue; }
+              await storage.writeFile(path, libText); wrote++; continue;
+            }
+
+            if(SYNC_POLICY === 'overwriteChanged'){
+              let current = null;
+              try { current = await storage.readFile(path); } catch {}
+              if(current != null){
+                const curTxt = await normalizeReadResult(current);
+                if(curTxt === libText){ skipped++; continue; }
+              }
+              await storage.writeFile(path, libText); wrote++; continue;
+            }
+
+            // 'forceOverwriteAll'
+            await storage.writeFile(path, libText); wrote++;
+          }catch(err){
+            console.warn('Sync fail', rel, err);
+            errors++;
+          }
+        }
+
+        await populateGroupSelect();
+        await populateSetSelectFromDir();
+        showToast(`Library sync: ${wrote} wrote, ${skipped} skipped${errors?`, ${errors} errors`:''}`);
+      } finally {
+        hideBusy();
+      }
+    }
+
+    async function populateGroupSelect(){
+      const row = $('groupsRow');
+      const sel = $('groupSelect');
+      const prevGroup = currentGroup;
+
+      try{
+        const groups = await storage.listGroups(); // e.g., ['__base__','miku',...]
+        const hasSub = groups.some(g => g !== BASE_GROUP);
+
+        if(!hasSub){
+          // No subfolders in IDB → hide row, lock to <base>
+          row.style.display='none';
+          sel.disabled = true;
+          sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+          currentGroup = BASE_GROUP;
+        } else {
+          row.style.display='';
+          sel.disabled = false;
+          sel.innerHTML = '<option value="__base__">&lt;base&gt;</option>';
+          for(const g of groups){
+            if(g === BASE_GROUP) continue;
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = truncateString(g);
+            opt.title = g;
+            sel.appendChild(opt);
+          }
+          const saved = localStorage.getItem(SELECTED_GROUP_KEY) || prevGroup || BASE_GROUP;
+          const names = new Set(groups);
+          const toSet = names.has(saved) ? saved : BASE_GROUP;
+          sel.value = toSet;
+          currentGroup = toSet;
+        }
+
+        if (currentGroup !== prevGroup && !booting) await populateSetSelectFromDir('');
+        return;
+      }catch(e){
+        console.warn('[idb] populateGroupSelect failed', e);
+      }
+    }
+
+    async function populateSetSelectFromDir(selected = ''){
+      idbPathBySlug.clear();
+      const sel = $('setSelect');
+
+      // Preserve any current multi-selection unless an explicit selection is provided
+      const prevSelected = new Set(Array.from(sel.selectedOptions).map(o=>o.value).filter(Boolean));
+
+      sel.innerHTML = '<option value="">(none)</option>';
+      const files = await listDataFiles(currentGroup);
+
+      const items = files.map(f=>{
+        const slug = slugFromFilename(f.name);
+        const display = f._display ? f._display : titleCase(slugToNiceName(slug));
+        const path = f._path || f.path || null;
+        return { slug, display, _path: path };
+      });
+
+      const coll = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
+      items.sort((a,b)=>coll.compare(a.display,b.display)||a.slug.localeCompare(b.slug));
+
+      for (const {slug, display, _path} of items){
+        const opt = document.createElement('option');
+        opt.value = slug;
+        opt.textContent = truncateString(display);
+        opt.title = display;
+        sel.appendChild(opt);
+        if (_path) idbPathBySlug.set(slug, _path);
+      }
+
+      // Selection logic
+      const haveSlug = new Set(items.map(i=>i.slug));
+      if (Array.isArray(selected) && selected.length){
+        for (const opt of sel.options){ opt.selected = selected.includes(opt.value) && haveSlug.has(opt.value); }
+      } else if (typeof selected === 'string' && selected){
+        if (haveSlug.has(selected)){
+          for (const opt of sel.options){ opt.selected = (opt.value === selected); }
+        }
+      } else if (prevSelected.size){
+        for (const opt of sel.options){ opt.selected = prevSelected.has(opt.value) && haveSlug.has(opt.value); }
+      } // else leave at (none)
+
+      sel.disabled = false;
+      forceSelectRepaint(sel);
+      if (!booting) saveHomeStateFromUI();
+    }
+
+    function getSelectedSlugs(){
+      const sel = $('setSelect');
+      if(!sel) return [];
+      const out = [];
+      for(const opt of sel.selectedOptions){
+        if(opt.value) out.push(opt.value);
+      }
+      return out;
+    }
+
+    // Read one deck’s text (raw file) and return parsed pairs (header ignored).
+    async function readDeckPairsForSlug(slug){
+      const filename = filenameFromSlug(slug);
+      const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+      const stored   = idbPathBySlug.get(slug);
+      const path     = stored || computed;
+      const raw = await storage.readFile(path);
+      const txt = await normalizeReadResult(raw);
+      return parsePairs(txt);
+    }
+
+    // Build a combined textarea text and pairs for N slugs.
+    // - Produces: NAME: Combined (N)
+    // - Then all pairs (JP/EN) concatenated with exactly one blank line between pairs.
+    async function buildCombinedFromSelected(slugs){
+      const allPairs = [];
+      for(const slug of slugs){
+        try{
+          const ps = await readDeckPairsForSlug(slug);
+          if(ps && ps.length) allPairs.push(...ps);
+        }catch{
+          // skip missing/unreadable files
+        }
+      }
+      const setsCount = slugs.length;
+      const pairCount = allPairs.length;
+      let text = `NAME: Combined (${setsCount} / ${pairCount})\n\n`;
+      text += allPairs.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
+      if(text && !text.endsWith('\n')) text += '\n';
+      return { text, pairs: allPairs, setsCount, pairCount };
+    }
+
+    function forceSelectRepaint(sel){
+      if(!sel) return;
+      const ua = navigator.userAgent || '';
+      if(!/Android/i.test(ua)) return; // only nudge on Android
+
+      try{
+        // Snapshot selected values
+        const selectedVals = Array.from(sel.selectedOptions).map(o=>o.value);
+
+        // Hide/show to force style/layout invalidation
+        sel.style.display = 'none';
+        void sel.offsetHeight;         // reflow
+        sel.style.display = '';
+
+        // Nudge layout engine by briefly toggling the 'multiple' attribute
+        const was = sel.multiple;
+        sel.multiple = !was;
+        void sel.offsetHeight;
+        sel.multiple = was;
+
+        // Re-apply selection (some engines drop it when toggling)
+        for(const opt of sel.options){
+          opt.selected = selectedVals.includes(opt.value);
+        }
+      }catch{}
+    }
+
+    // --- Helpers to rebuild Working Deck text (single or combined) and update home-state after removals ---
+    function buildWorkingText(headerName, pairs, isCombined, setsCount){
+      const pc = Math.max(0, pairs ? pairs.length : 0);
+      let header;
+      if (isCombined){
+        const sc = Math.max(0, (setsCount|0) || 0);
+        header = `NAME: Combined (${sc} / ${pc})`;
+      } else {
+        header = `NAME: ${titleCase(headerName||'')}`;
+      }
+      let text = header + '\n\n';
+      if (pc){
+        text += pairs.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
+        if (!text.endsWith('\n')) text += '\n';
+      }
+      return text;
+    }
+
+    function updateHomeStateTextAfterRemoval(removedIdx){
+      try{
+        const ta = $('pairs'); if(!ta) return;
+        const beforePairs = parsePairs(ta.value);
+        if (!Array.isArray(beforePairs) || removedIdx < 0 || removedIdx >= beforePairs.length) return;
+
+        // Remove the target pair
+        const afterPairs = beforePairs.slice(0, removedIdx).concat(beforePairs.slice(removedIdx+1));
+
+        // Determine if this is a combined selection (>=2 slugs) or single
+        const hs = loadHomeState();
+        let sel = Array.isArray(hs.cards) ? hs.cards.filter(Boolean) : [];
+        if (!sel.length) sel = readSelectedSlugs();
+        const isCombined = sel.length > 1 || (!state.setSlug && sel.length > 0);
+
+        // Header for single = current header without counts; combined header is synthesized with counts
+        const header = isCombined ? 'Combined' : (headerNameFromTextarea() || state.setName || (state.setSlug ? titleCase(slugToNiceName(state.setSlug)) : ''));
+        const setsCount = isCombined ? sel.length : 0;
+
+        const newText = buildWorkingText(header, afterPairs, isCombined, setsCount);
+        ta.value = newText;
+
+        // Persist merged home-state with updated text
+        hs.text = newText;
+
+        if (isCombined){
+          if (!hs.combinedProgress) hs.combinedProgress = {};
+          if (!Array.isArray(hs.combinedProgress.cards)) hs.combinedProgress.cards = sel.slice();
+          hs.combinedProgress.total = afterPairs.length;
+          hs.combinedProgress.idx = state.idx;           // state.idx will already be clamped after splice
+          hs.combinedProgress.shown = state.shown;
+          hs.combinedProgress.promptSide = state.promptSide || 'jp';
+        }
+
+        saveHomeState(hs);
+        updateStartEnabled();
+      }catch(e){
+        console.warn('updateHomeStateTextAfterRemoval failed', e);
+      }
+    }
+
+    // ===== Marquee mode state =====
+    const MARQUEE_FONT_KEY = 'sc_marquee_font';
+    const MARQUEE_SPEED_KEY = 'sc_marquee_speed'; // px per second
+
+    const marquee = {
+      lines: [],
+      cursor: 0,        // current index being shown
+      running: false,
+      caller: 'start',  // 'start' or 'session'
+      fontPx: Math.max(24, +(localStorage.getItem(MARQUEE_FONT_KEY)||72)),
+      pxPerSec: Math.max(20, +(localStorage.getItem(MARQUEE_SPEED_KEY)||80)),
+      repeatMax: 3,
+      repeatRemaining: 0,
+      currentRAF: null,
+      animToken: 0,
+      loop: { a: null, b: null, enabled: false, stage: 0 } // stage: 0->set A, 1->set B, 2->enable loop, 3->reset
+    };
+    function updateRepeatCounterDisplay(){
+      const el = $('marqueeRepeat');
+      if(!el) return;
+      el.textContent = String(Math.max(1, marquee.repeatRemaining||marquee.repeatMax||3));
+      // Match marquee text color
+      try{ el.style.color = getComputedStyle($('marqueeText')).color; }catch{}
+    }
+
+    function setRepeatMax(n){
+      marquee.repeatMax = Math.max(1, Math.min(10, (n|0)||3));
+      // Reset remaining for current item to full count
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
+    }
+
+    function cycleRepeatMax(){
+      let n = marquee.repeatMax;
+      n = (n % 10) + 1; // 1..10 cycle
+      setRepeatMax(n);
+      // Restart current line to reflect new countdown immediately
+      if(marquee.running && marquee.lines.length){
+        stopMarqueeLoop();
+        marquee.running = true;
+        showLineAt(marquee.cursor);
+      }
+    }
+
+    // --- Wake Lock (keep screen on during Marquee) ---
+    let wakeLock = null;
+    async function acquireWakeLock(){
+      if(!('wakeLock' in navigator)) return; // not supported
+      try{
+        if(!wakeLock){
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener?.('release',()=>{ wakeLock = null; });
+        }
+      }catch(err){ /* ignore (e.g., tab not visible) */ }
+    }
+    function releaseWakeLock(){
+      try{ wakeLock && wakeLock.release && wakeLock.release(); }catch{}
+      wakeLock = null;
+    }
+
+    function setMarqueeFont(px){
+      marquee.fontPx = Math.max(24, Math.min(200, px|0));
+      localStorage.setItem(MARQUEE_FONT_KEY, marquee.fontPx);
+      $('marqueeText').style.fontSize = marquee.fontPx + 'px';
+    }
+
+    function setMarqueeSpeed(pxPerSec){
+      marquee.pxPerSec = Math.max(20, Math.min(600, pxPerSec|0));
+      localStorage.setItem(MARQUEE_SPEED_KEY, marquee.pxPerSec);
+    }
+
+    function restartMarqueeWithNewSpeed(){
+      if(!marquee.running) return;
+      const el = $('marqueeText');
+      const vp = $('marqueeViewport');
+      let tx = 0;
+      const tr = getComputedStyle(el).transform;
+      if(tr && tr !== 'none'){
+        const m = tr.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,([^,]+),([^\)]+)\)/);
+        if(m){ tx = parseFloat(m[1]) || 0; }
+      }
+      const textWidth = el.scrollWidth;
+      if(!isFinite(tx) || tx === 0){ tx = vp.clientWidth; }
+      el.style.transition = 'none';
+      el.style.transform = `translateX(${tx}px)`;
+      void el.offsetWidth;
+      const remaining = Math.abs(tx - (-textWidth));
+      const durationSec = remaining / marquee.pxPerSec;
+      el.style.transition = `transform ${durationSec}s linear`;
+      el.style.transform = `translateX(${-textWidth}px)`;
+    }
+
+    // ==== Marquee helpers for looping and navigation ====
+    function marqueeHasMultiple(){ return marquee.lines && marquee.lines.length > 1; }
+    function currentIndex(){ return marquee.cursor % marquee.lines.length; }
+    function normalizeRange(){
+      if(marquee.loop.a==null || marquee.loop.b==null) return;
+      if(marquee.loop.a===marquee.loop.b) return; // single-item loop ok
+      if(marquee.loop.a > marquee.loop.b){ const t = marquee.loop.a; marquee.loop.a = marquee.loop.b; marquee.loop.b = t; }
+    }
+
+    function hasLoop(){ return !!(marquee.loop.enabled && marquee.loop.a!=null && marquee.loop.b!=null); }
+
+    function nextIndex(){
+      const n = marquee.lines.length; if(!n) return 0;
+      if(hasLoop()){
+        const a = marquee.loop.a % n, b = marquee.loop.b % n; // normalizeRange() ensures a<=b
+        return (marquee.cursor === b) ? a : (marquee.cursor + 1) % n;
+      }
+      return (marquee.cursor + 1) % n;
+    }
+
+    function prevIndex(){
+      const n = marquee.lines.length; if(!n) return 0;
+      if(hasLoop()){
+        const a = marquee.loop.a % n, b = marquee.loop.b % n; // a<=b guaranteed
+        return (marquee.cursor === a) ? b : (marquee.cursor - 1 + n) % n;
+      }
+      return (marquee.cursor - 1 + n) % n;
+    }
+
+    function updateABButtonLabel(){
+      const st = marquee.loop.stage % 3;
+      const btn = $('abLoopBtn');
+      const label = ['a','b','r'][st];
+      btn.textContent = label;
+      btn.style.background = '#1f2937';
+      btn.style.color = '#fefce8';
+      if(label === 'b'){
+        btn.style.background = '#16a34a';
+        btn.style.color = '#fefce8';
+      } else if(label === 'r'){
+        btn.style.background = '#dc2626';
+        btn.style.color = '#fefce8';
+      }
+    }
+
+    function showMarqueeScreen(){
+      cancelCardTimers();
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='none';
+      $('actionBar').style.display='none';
+      $('marqueeCard').style.display='block';
+      // Initialize font each time shown (in case user changed settings)
+      setMarqueeFont(marquee.fontPx);
+      document.body.classList.remove('hasBar'); // marquee has its own controls, no fixed bar
+      // Make marquee full-screen and hide header/scroll
+      $('marqueeCard').classList.add('fullscreen');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function hideMarqueeScreen(){
+      $('marqueeCard').classList.remove('fullscreen');
+      document.body.style.overflow = '';
+      $('marqueeCard').style.display='none';
+      // restore previous caller screen
+      if (marquee.caller === 'session') {
+        enterSession();
+      } else {
+        exitSession();
+      }
+   }
+
+    // ==== Refactored Marquee play logic ====
+    function playMarqueeLine(text, onDone){
+      const vp = $('marqueeViewport');
+      const el = $('marqueeText');
+      el.textContent = text;
+      el.style.transition = 'none';
+      const token = ++marquee.animToken; // unique id for this animation
+      const startX = vp.clientWidth;
+      el.style.transform = `translateX(${startX}px)`;
+      void el.offsetWidth;
+      const textWidth = el.scrollWidth;
+      const distance = startX + textWidth;
+      const durationSec = distance / marquee.pxPerSec;
+      el.style.transition = `transform ${durationSec}s linear`;
+      el.style.transform = `translateX(${-textWidth}px)`;
+      const handler = () => {
+        el.removeEventListener('transitionend', handler);
+        if(token === marquee.animToken){ onDone && onDone(); }
+      };
+      el.addEventListener('transitionend', handler);
+    }
+
+    function showLineAt(i){
+      if(!marquee.lines.length) return;
+      marquee.cursor = (i+marquee.lines.length) % marquee.lines.length;
+
+      // reset repeats & counters
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
+      updateMarqueeIndexDisplay(); // <-- add this
+
+      const doOnePass = ()=>{
+        updateRepeatCounterDisplay();
+        playMarqueeLine(marquee.lines[marquee.cursor], ()=>{
+          if(!marquee.running) return;
+          if(marquee.repeatRemaining > 1){
+            marquee.repeatRemaining--;
+            updateRepeatCounterDisplay();
+            doOnePass(); // repeat same item
+          } else {
+            marquee.cursor = nextIndex();
+            marquee.repeatRemaining = marquee.repeatMax;
+            updateRepeatCounterDisplay();
+            updateMarqueeIndexDisplay(); // <-- update when advancing to next line
+            doOnePass();
+          }
+        });
+      };
+
+      doOnePass();
+    }
+
+    function startMarqueeLoop(){
+      marquee.running = true;
+      updateABButtonLabel();
+      showLineAt(marquee.cursor || 0);
+    }
+
+    function stopMarqueeLoop(){
+      marquee.running = false;
+      marquee.animToken++;
+      // Stop any current transition cleanly
+      const el = $('marqueeText');
+      el.style.transition = 'none';
+    }
+
+    function updateMarqueeIndexDisplay(){
+      const el = $('marqueeIndex');
+      if(!el) return;
+      const total = marquee.lines.length|0;
+      if(total <= 1){
+        el.style.display = 'none';
+        return;
+      }
+      const idx = ((marquee.cursor % total) + total) % total; // safe 0..total-1
+      el.textContent = `${idx+1} / ${total}`;
+      el.style.display = 'block';
+      // match marquee text color
+      try{ el.style.color = getComputedStyle($('marqueeText')).color; }catch{}
+    }
+
+    async function getJPListForSlug(slug){
+      try{
+        const filename = filenameFromSlug(slug);
+        const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+        const stored   = idbPathBySlug.get(slug);
+        const path     = stored || computed;
+        const raw = await storage.readFile(path);
+        const t   = await normalizeReadResult(raw);
+        const pairs = parsePairs(t);
+        return pairs.map(p=>p[0]).filter(Boolean);
+      }catch{ return []; }
+    }
+
+    async function startMarqueeFromSelected(){
+      const slugs = getSelectedSlugs();
+      if(!slugs.length) return;
+
+      marquee.caller = 'start';
+
+      if(slugs.length === 1){
+        marquee.lines = await getJPListForSlug(slugs[0]);
+      }else{
+        // Combine JP lines across all selected decks
+        const all = [];
+        for(const slug of slugs){
+          try{
+            const ps = await readDeckPairsForSlug(slug);
+            for(const [jp] of ps){ if(jp) all.push(jp); }
+          }catch{}
+        }
+        marquee.lines = all;
+      }
+
+      marquee.cursor = 0;
+      if(!marquee.lines.length){ showToast('No JP lines'); return; }
+
+      const multi = marqueeHasMultiple();
+      ['prevLineBtn','nextLineBtn','abLoopBtn'].forEach(id=>$(id).style.display = multi ? '' : 'none');
+      marquee.loop = { a:null, b:null, enabled:false, stage:0 };
+      updateABButtonLabel();
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
+
+      // show/hide index badge & set initial text
+      const idxEl = $('marqueeIndex');
+      if (idxEl) idxEl.style.display = multi ? 'block' : 'none';
+      updateMarqueeIndexDisplay();
+
+      showMarqueeScreen();
+      // Hide repeat counter if only one line
+      const repeatEl = $('marqueeRepeat');
+      if (repeatEl) {
+        repeatEl.style.display = marquee.lines.length > 1 ? 'block' : 'none';
+      }
+      startMarqueeLoop();
+    }
+
+    function startMarqueeFromSession(){
+      if(!state.cards.length) return;
+      marquee.caller = 'session';
+
+      // We only want the JP string of the current card.
+      // We can recover JP by checking promptSide:
+      // If promptSide==='jp': current.q is JP
+      // If promptSide==='en': current.a is JP
+      const cur = state.cards[state.idx];
+      const jp = (state.promptSide==='jp') ? cur.q : cur.a;
+      marquee.lines = [jp].filter(Boolean);
+      marquee.cursor = 0;
+      if(!marquee.lines.length){ showToast('No JP text'); return; }
+      const multi = marqueeHasMultiple();
+      ['prevLineBtn','nextLineBtn','abLoopBtn'].forEach(id=>$(id).style.display = multi ? '' : 'none');
+      marquee.loop = { a:null, b:null, enabled:false, stage:0 };
+      updateABButtonLabel();
+      marquee.repeatRemaining = marquee.repeatMax;
+      updateRepeatCounterDisplay();
+      showMarqueeScreen();
+      // Hide repeat counter if only one line
+      const repeatEl = $('marqueeRepeat');
+      if (repeatEl) {
+        repeatEl.style.display = marquee.lines.length > 1 ? 'block' : 'none';
+      }
+      startMarqueeLoop();
+    }
+
+    // Utils
+    function slugify(name){
+      name = String(name || '').trim();
+      // Preserve a leading numeric prefix with a dot, e.g. "01." or "007."
+      const m = name.match(/^\s*(\d+)\.\s*/);
+      let prefix = '';
+      if(m){
+        prefix = m[1] + '.';                // keep exact digits + dot
+        name = name.slice(m[0].length);     // remove prefix (incl. following spaces) from the remainder
+      }
+      // Slugify the remainder; allow dot characters; collapse spaces to underscores
+      const rest = name.toLowerCase()
+                       .replace(/[^\p{L}\p{N}\s._-]/gu,'')   // allow letters/numbers/space/._-
+                       .trim()
+                       .replace(/\s+/g,'_')
+                       .replace(/_+/g,'_')
+                       .replace(/^_+|_+$/g,'');
+      return prefix ? (rest ? `${prefix}_${rest}` : `${prefix}`) : rest;
+    }
+    function titleCase(s){
+      return s.toLowerCase().trim().split(/\s+/).map(w=>w? w[0].toUpperCase()+w.slice(1):'').join(' ');
+    }
+    // Truncate display string to avoid overflow
+    function truncateString(s, max=15){
+      s = String(s || '');
+      return s.length > max ? s.slice(0, max) + '...' : s;
+    }
+
+    const PREFIX = 'sc_progress:';
+    function keyForSlug(slug){ return PREFIX + slug; }
+    function slugToNiceName(slug){ return titleCase(slug.replace(/[_-]+/g,' ')); }
+
+    // Progress-only storage (localStorage)
+    function loadProgress(slug){
+      try{ return JSON.parse(localStorage.getItem(keyForSlug(slug))||'null'); }
+      catch{ return null; }
+    }
+    function saveProgressObj(slug, obj){
+      try{ localStorage.setItem(keyForSlug(slug), JSON.stringify(obj)); }catch{}
+    }
+
+    const DIFFICULT_KEY = 'sc_difficult_cards';
+    function loadDifficult(){
+      try{ return JSON.parse(localStorage.getItem(DIFFICULT_KEY)||'[]'); }catch{ return []; }
+    }
+    function saveDifficult(list){
+      try{ localStorage.setItem(DIFFICULT_KEY, JSON.stringify(list)); }catch{}
+    }
+    function _normLine(s){
+      // Trim, collapse ASCII + full-width spaces, unify whitespace
+      return String(s||'')
+        .replace(/[\u3000\s]+/g,' ') // collapse full-width & ascii spaces
+        .trim();
+    }
+    function difficultKey(rec){
+      return `${rec.slug||'(combined)'}@@${_normLine(rec.jp)}@@${_normLine(rec.en)}`;
+    }
+
+    function markCurrentAsDifficult(){
+      if(!state.cards.length) return false;
+      const c = state.cards[state.idx];
+      const jp = (state.promptSide==='jp') ? c.q : c.a;
+      const en = (state.promptSide==='jp') ? c.a : c.q;
+      const rec = {
+        slug: state.setSlug || '(combined)',
+        setName: state.setName || '(Combined)',
+        jp, en, ts: Date.now()
+      };
+      const list = loadDifficult();
+      const key = difficultKey(rec);
+      const seen = new Set(list.map(difficultKey));
+      if(!seen.has(key)){
+        list.push(rec);
+        saveDifficult(list);
+        return true; // added
+      }
+      return false; // already present
+    }
+
+    function removeCurrentCardFromSession(){
+      if(!state.cards.length) return;
+
+      // Remember which pair index we are removing relative to the pre-splice deck
+      const removedIdx = state.idx;
+
+      // Remove from in-memory session
+      state.cards.splice(state.idx,1);
+
+      // Clamp index if we removed the last item
+      if(state.idx >= state.cards.length){ state.idx = Math.max(0, state.cards.length-1); }
+      state.shown = false;
+      state.done = (state.cards.length===0);
+
+      // Reflect the removal in HOME_STATE.text for BOTH single and combined sessions
+      updateHomeStateTextAfterRemoval(removedIdx);
+
+      if(state.done){
+        $('promptArea').textContent='Done!';
+        $('answerArea').textContent='Done!';
+        $('progress').textContent='0/0';
+        $('goBtn').textContent='Restart';
+        cancelCardTimers();
+      } else {
+        updateHUD();
+        // After HUD uses new state, snapshot combined progress if applicable
+        if (!state.setSlug) saveCombinedProgressToHomeState();
+      }
+    }
+
+    // Review screen
+    function showReviewScreen(){
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='none';
+      $('marqueeCard').style.display='none';
+      $('reviewCard').style.display='block';
+      renderReviewList();
+    }
+    function hideReviewScreen(){
+      $('reviewCard').style.display='none';
+      $('inputCard').style.display='block';
+    }
+    function renderReviewList(){
+      const list = loadDifficult();
+      $('reviewCount').textContent = `Difficult: ${list.length}`;
+      const box = $('reviewList');
+      box.innerHTML = '';
+      if(!list.length){ box.textContent = 'No difficult cards yet.'; return; }
+      for(const rec of list){
+        const div = document.createElement('div');
+        div.className = 'reviewItem';
+        const slug = document.createElement('div'); slug.className='slug'; slug.textContent = rec.setName ? `${rec.setName}` : `${rec.slug||''}`;
+        const jp = document.createElement('div'); jp.className='jp'; jp.textContent = rec.jp||'';
+        const en = document.createElement('div'); en.className='en'; en.textContent = rec.en||'';
+        div.appendChild(slug); div.appendChild(jp); div.appendChild(en);
+        box.appendChild(div);
+      }
+    }
+    function clearReview(){ saveDifficult([]); renderReviewList(); showToast('Cleared'); }
+
+    // Unnamed generator using existing files in the chosen folder
+    async function nextUnnamed(){
+      const files = await listDataFiles();
+      const have = new Set(files.map(f=>slugFromFilename(f.name)));
+      let n=1, slug;
+      do { slug = slugify(`Unnamed ${n}`); n++; } while(have.has(slug));
+      return { name: titleCase(slug.replace(/_/g,' ')), slug };
+    }
+
+    // Ensure slug is unique among existing files in the chosen folder
+    async function ensureUniqueSlug(base){
+      const files = await listDataFiles();
+      const have = new Set(files.map(f=>slugFromFilename(f.name)));
+      if(!have.has(base)) return base;
+      let i = 2, candidate = `${base}_${i}`;
+      while(have.has(candidate)){ i++; candidate = `${base}_${i}`; }
+      return candidate;
+    }
+
+    // Parser ignores a first-line NAME header (case-insensitive)
+    function parsePairs(text){
+      const lines=text.split(/\r?\n/);
+      let i=0;
+      if(/^\s*NAME:\s*/i.test(lines[0]||'')){ i=1; }
+      const pairs=[];
+      for(; i<lines.length; ){
+        const jp=(lines[i]??'').trim();
+        const en=(lines[i+1]??'').trim();
+        if(jp&&en){pairs.push([jp,en]);i+=2;}else{i++;}
+        while(i<lines.length && !lines[i].trim()) i++;
+      }
+      return pairs;
+    }
+
+    function sanitizeHeaderName(raw){
+      const s = String(raw||'').trim();
+      // strip trailing counts like "(2 / 20)"
+      return s.replace(/\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*$/, '');
+    }
+
+    function headerNameFromTextarea(){
+      const ta = $('pairs'); if(!ta) return '';
+      const first = (ta.value.split(/\r?\n/,1)[0]||'');
+      const m = first.match(/^\s*name\s*:\s*(.*)$/i);
+      if(!m) return '';
+      const cleaned = sanitizeHeaderName(m[1]);
+      return cleaned.trim();
+    }
+
+    // Viewer font sizing (applies to both panels, persists)
+    const VIEW_FONT_KEY = 'sc_view_font_rem';
+    const SELECTED_GROUP_KEY = 'sc_selected_group';
+    const SELECTED_CARD_KEY  = 'sc_selected_card';
+    let viewFontRem = parseFloat(localStorage.getItem(VIEW_FONT_KEY) || '2.0');
+    function applyViewFont(){
+      const v = Math.max(1.0, Math.min(4.0, viewFontRem));
+      ['promptArea','answerArea'].forEach(id=> $(id).style.fontSize = v + 'rem');
+      updateViewerLayout();
+    }
+    function bumpViewFont(delta){
+      viewFontRem = Math.max(1.0, Math.min(4.0, +(viewFontRem + delta).toFixed(2)));
+      localStorage.setItem(VIEW_FONT_KEY, String(viewFontRem));
+      applyViewFont();
+    }
+    function updateViewerLayout(){
+      const vb = document.querySelector('.viewerBox');
+      if(!vb) return;
+      const single = carMode ? (viewFontRem >= 2.2) : false; // never single in non-car
+      vb.classList.toggle('single', single);
+      vb.classList.toggle('showPrompt', single && !state.shown);
+      vb.classList.toggle('showAnswer', single && state.shown);
+    }
+
+    // ===== Study Card Timers (independent Prompt/Answer) =====
+    const TIMER_OPTIONS = [0,5,10,15,20,30,60];
+
+    // Separate indices for Prompt and Answer phases
+    let timerIdxPrompt = parseInt(localStorage.getItem('sc_timer_idx_prompt') || '0', 10);
+    let timerIdxAnswer = parseInt(localStorage.getItem('sc_timer_idx_answer') || '0', 10);
+    if(!(timerIdxPrompt>=0 && timerIdxPrompt<TIMER_OPTIONS.length)) timerIdxPrompt = 0;
+    if(!(timerIdxAnswer>=0 && timerIdxAnswer<TIMER_OPTIONS.length)) timerIdxAnswer = 0;
+
+    function getPromptSeconds(){ return TIMER_OPTIONS[timerIdxPrompt]; }
+    function getAnswerSeconds(){ return TIMER_OPTIONS[timerIdxAnswer]; }
+
+    // Which phase are we in? If answer is showing -> Answer phase; else Prompt phase.
+    function getPhaseSeconds(){
+      return state.shown ? getAnswerSeconds() : getPromptSeconds();
+    }
+
+    function updateTimerLabel(){
+      const b = $('timerBtn');
+      if (!b) return;
+      if (paused && pausedRemainingMs > 0) {
+        b.textContent = `${Math.max(0, Math.ceil(pausedRemainingMs / 1000))}s`;
+      } else {
+        b.textContent = `${getPhaseSeconds()}s`;
+      }
+    }
+
+    // Click cycles the timer for the *current* phase
+    function cycleTimer(){
+      const isAnswerPhase = !!state.shown;
+      if (isAnswerPhase) {
+        timerIdxAnswer = (timerIdxAnswer+1) % TIMER_OPTIONS.length;
+        localStorage.setItem('sc_timer_idx_answer', String(timerIdxAnswer));
+      } else {
+        timerIdxPrompt = (timerIdxPrompt+1) % TIMER_OPTIONS.length;
+        localStorage.setItem('sc_timer_idx_prompt', String(timerIdxPrompt));
+      }
+      updateTimerLabel();
+      cancelCardTimers();
+      if (sessionActive()) scheduleCardTimer();
+      if (getPhaseSeconds() === 0) {
+        paused = false;
+        setPauseLabel('Pause');
+      }
+      updatePauseButtonEnabled();
+    }
+
+    let revealTO=null, nextTO=null;
+    let timerInterval=null; // interval for countdown label
+    let timerEndAt=0;       // epoch ms when current phase ends
+
+    // ---- Pause/Continue (car-mode only) ----
+    let paused = false;
+    let pausedRemainingMs = 0; // how much time left when paused
+
+    function timerActive(){ return !!(revealTO || nextTO); }
+    function cancelCardTimers(){
+      if(revealTO){ clearTimeout(revealTO); revealTO=null; }
+      if(nextTO){ clearTimeout(nextTO); nextTO=null; }
+      if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+      timerEndAt = 0;
+      // restore static label when not actively counting
+      updateTimerLabel();
+    }
+
+    function startCountdown(ms){
+      if(!$('timerBtn')) return;
+      if(ms<=0){ updateTimerLabel(); return; }
+      timerEndAt = Date.now() + ms;
+      // draw immediately, then every 1s
+      const draw = ()=>{
+        const now = Date.now();
+        const remain = Math.max(0, Math.ceil((timerEndAt - now)/1000));
+        $('timerBtn').textContent = `${remain}s`;
+        if(remain<=0 && timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+      };
+      draw();
+      if(timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(draw, 1000);
+    }
+    function scheduleCardTimer(){
+      if (paused) { updateTimerLabel(); updatePauseButtonEnabled(); return; }
+      cancelCardTimers();
+      const secs = getPhaseSeconds();
+      if(!secs){ updateTimerLabel(); return; } // 0s: disabled
+      const ms = secs*1000;
+
+      if(!state.shown){ // waiting to reveal answer
+        revealTO = setTimeout(()=>{ if(sessionActive()) go(); }, ms);
+      } else { // answer visible -> move next
+        nextTO = setTimeout(()=>{ if(sessionActive()) go(); }, ms);
+      }
+      startCountdown(ms);
+      updatePauseButtonEnabled();
+    }
+
+    function updatePauseButtonEnabled() {
+      const b = $('pauseBtn');
+      if (!b) return;
+      const enabled = (getPhaseSeconds() > 0) && sessionActive() && carMode;
+      b.disabled = !enabled;
+    }
+
+    // ---- Centralised session transitions ----
+    function enterSession(){
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='block';
+      $('actionBar').style.display='flex';
+      document.body.classList.add('hasBar');
+      updateHUD();
+      updateTimerLabel();
+      bindSessionGestures();
+      updatePauseButtonEnabled();
+    }
+
+    function exitSession(){
+      cancelCardTimers();
+      try { if (!state.setSlug && state.cards && state.cards.length) saveCombinedProgressToHomeState(); } catch {}
+      $('sessionCard').style.display='none';
+      $('actionBar').style.display='none';
+      $('inputCard').style.display='block';
+      document.body.classList.remove('hasBar');
+      updatePauseButtonEnabled();
+    }
+
+    function setPauseLabel(txt){
+      const b = $('pauseBtn'); if(!b) return;
+      // Fade out a touch, swap text, then fade back in
+      b.classList.add('fading');
+      setTimeout(()=>{
+        b.textContent = txt;
+        // toggle red style based on label
+        if (txt === 'Continue') {
+          b.classList.add('paused');
+        } else {
+          b.classList.remove('paused');
+        }
+        b.classList.remove('fading');
+      }, 140);
+    }
+
+    function pauseSessionTimers() {
+      if (paused) return;
+      if (getPhaseSeconds() === 0) return; // no-op if timer disabled
+      // capture remaining time
+      const remain = Math.max(0, timerEndAt ? (timerEndAt - Date.now()) : 0);
+      pausedRemainingMs = remain;
+      cancelCardTimers();
+      paused = true;
+      updateTimerLabel();
+      setPauseLabel('Continue');
+    }
+
+    function resumeSessionTimers() {
+      if (!paused) return;
+      if (getPhaseSeconds() === 0) {
+        paused = false;
+        setPauseLabel('Pause');
+        return;
+      }
+      const ms = (pausedRemainingMs > 0) ? pausedRemainingMs : (getPhaseSeconds() * 1000);
+      paused = false;
+      setPauseLabel('Pause');
+      // schedule appropriate phase
+      if (!state.shown) {
+        revealTO = setTimeout(() => { if (sessionActive() && !paused) go(); }, ms);
+      } else {
+        nextTO = setTimeout(() => { if (sessionActive() && !paused) go(); }, ms);
+      }
+      startCountdown(ms);
+    }
+
+    function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
+
+    async function startSession(){
+      const userText = $('pairs').value.trim();
+      const lines = userText.split(/\r?\n/);
+      const m = (lines[0]||'').match(/^\s*name:\s*(.+)/i);
+      const selectedSlugsMulti = getSelectedSlugs();
+
+      if (selectedSlugsMulti.length > 1){
+        // Prefer the user's current textarea (or saved home-state text) to preserve pruned combined decks
+        const hs = loadHomeState();
+        const preferredText = (hs && typeof hs.text === 'string' && hs.text.trim().length)
+          ? hs.text
+          : $('pairs').value;
+
+        let pairsArr = parsePairs(preferredText);
+
+        // Fallback: if textarea was empty/invalid, rebuild from files once
+        if (!Array.isArray(pairsArr) || !pairsArr.length){
+          const res = await buildCombinedFromSelected(selectedSlugsMulti);
+          pairsArr = Array.isArray(res) ? res : (res && res.pairs) || [];
+          // If we rebuilt, also refresh the textarea so Home view matches
+          if (res && res.text) { $('pairs').value = res.text; }
+          if (!pairsArr.length){ alert('No pairs found'); return; }
+        }
+
+        state.setName = `Combined (${selectedSlugsMulti.length})`;
+        state.setSlug = ''; // transient session; do not persist progress per-file
+
+        // Resume only if the identity (selected slugs) matches and counts align with saved progress
+        const cp = hs && hs.combinedProgress;
+        const canResume = !!(cp && arraysEqual(cp.cards || [], selectedSlugsMulti) && (cp.total|0) === pairsArr.length);
+        state.promptSide = (canResume && cp.promptSide) ? cp.promptSide : 'jp';
+
+        state.cards = mapPairsToCards(pairsArr, state.promptSide);
+        if (canResume) {
+          state.idx = Math.max(0, Math.min(cp.idx|0, Math.max(0, state.cards.length-1)));
+          state.shown = !!cp.shown;
+          state.done = false;
+        } else {
+          state.idx = 0; state.shown = false; state.done = false;
+        }
+
+        enterSession();
+        return;
+      }
+      // ---------- END NEW ----------
+
+      // Resolve display name and slug.
+      // IMPORTANT: If user selected an existing set, preserve its slug EXACTLY ...
+      let displayName, slug;
+      const selectedSlug = $('setSelect').value;
+
+      if (selectedSlug) {
+        // Existing file was chosen — default: keep its slug unchanged.
+        slug = selectedSlug;
+        const baselineDisplay = titleCase(slugToNiceName(selectedSlug)); // e.g., "01. Cause Reason"
+
+        if (m) {
+          // Normalize header text: strip optional counts suffix like "(N / M)"
+          const rawName = (m[1] || '').trim();
+          const nameNoCounts = rawName.replace(/\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*$/,'');
+          displayName = titleCase(nameNoCounts);
+          // Persist header without counts so we don't trigger clone behaviour
+          lines[0] = `NAME: ${displayName}`;
+
+          // Only clone to a new file if the user actually changed the NAME
+          // compared to what this slug normally displays as (ignore counts)
+          if (displayName !== baselineDisplay) {
+            const proposed = slugify(displayName);            // canonical base (may remove dot)
+            slug = await ensureUniqueSlug(proposed);          // ensure uniqueness when cloning
+          }
+        } else {
+          // No header present — derive display name from slug and insert header.
+          displayName = baselineDisplay;
+          lines.unshift(`NAME: ${displayName}`);
+        }
+      } else {
+        // No existing file selected — new or pasted content
+        if (m) {
+          // Normalize header and strip counts before slugifying
+          const rawName = (m[1] || '').trim();
+          const nameNoCounts = rawName.replace(/\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*$/,'');
+          displayName = titleCase(nameNoCounts);
+          slug = slugify(displayName);
+          lines[0] = `NAME: ${displayName}`;
+        } else {
+          // Completely new unnamed set
+          const nu = await nextUnnamed();
+          displayName = nu.name;
+          slug = nu.slug;
+          lines.unshift(`NAME: ${displayName}`);
+        }
+      }
+      const textToSave = lines.join('\n');
+
+      state.setName = displayName;
+      state.setSlug = slug;
+
+      // ---- Load saved progress FIRST so we honour saved promptSide ----
+      const saved = loadProgress(slug);
+      state.promptSide = (saved && saved.promptSide) ? saved.promptSide : 'jp';
+
+      const raw = parsePairs(textToSave);
+      if(raw.length===0){ alert('No pairs found'); return; }
+      state.cards = mapPairsToCards(raw, state.promptSide);
+
+      // Resume index/shown if present
+      if(saved && saved.progress){
+        const total = state.cards.length;
+        state.idx = Math.max(0, Math.min(saved.progress.idx|0, total-1));
+        state.shown = !!saved.progress.shown;
+        state.done = false;
+      } else {
+        state.idx = 0; state.shown = false; state.done = false;
+      }
+
+      $('inputCard').style.display='none';
+      $('sessionCard').style.display='block';
+      $('actionBar').style.display='flex';
+      document.body.classList.add('hasBar');
+      updateHUD();
+      updateTimerLabel();
+      bindSessionGestures();
+      updatePauseButtonEnabled();
+      // refresh select from disk to ensure presence
+      await populateSetSelectFromDir(slug);
+    }
+
+    function updateHUD(){
+      const current=state.cards[state.idx];
+      $('progress').textContent=`${Math.min(state.idx+1,state.cards.length)}/${state.cards.length}`;
+      $('promptArea').textContent=current?.q??'';
+      $('answerArea').textContent=current?.a??'';
+      $('answerArea').style.opacity=state.shown?'1':'0.45';
+      $('answerArea').style.filter=state.shown?'none':'blur(5px)';
+      $('goBtn').textContent=state.shown?'Next':'Go';
+      $('reverseBtn').textContent=state.promptSide==='jp'?'EN':'JP';
+      scheduleCardTimer();
+      updateViewerLayout();
+    }
+
+    function updateStartEnabled(){
+      const ta = $('pairs');
+      const slugs = getSelectedSlugs();
+      const hasSet = slugs.length > 0;
+      const hasText = ta.value.trim().length > 0;
+
+      // Start/Scroll rules unchanged
+      $('startBtn').disabled = !(hasSet || hasText);
+      $('marqueeBtnStart').disabled = !hasSet; // Scroll-from-home needs at least one set
+
+      // Save enabled when:
+      // - NAME header exists (non-blank)
+      // - textarea has any content
+      const headerOk = !!headerNameFromTextarea();
+      // Allow saving new decks from pasted text even with no Card selected
+      const enableSave = headerOk && hasText;
+      const sb = $('saveBtn');
+      if(sb) sb.disabled = !enableSave;
+    }
+
+    function readSelectedSlugs(){
+      const sel = $('setSelect');
+      if(!sel) return [];
+      return Array.from(sel.selectedOptions).map(o=>o.value).filter(Boolean);
+    }
+
+    function onGroupChange(e){
+      const sel = e?.currentTarget || $('groupSelect');
+      const val = (sel && sel.value) ? sel.value : '__base__';
+      currentGroup = val;
+      try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
+      // Rebuild Deck list immediately (mobile-friendly), then persist state
+      return populateSetSelectFromDir('')
+        .then(()=>{ saveHomeStateFromUI(); })
+        .catch(()=>{ saveHomeStateFromUI(); });
+    }
+
+    function saveHomeStateFromUI(){
+      try{
+        const hs = loadHomeState();
+        hs.group = currentGroup || "__base__";
+        hs.cards = readSelectedSlugs();
+        hs.text  = ($('pairs')?.value)||'';
+        // Do NOT wipe out combinedProgress here; that is updated via saveCombinedProgressToHomeState()
+        saveHomeState(hs);
+      }catch{}
+    }
+
+    async function restoreHomeStateIfAny(){
+      try{
+        const hs = loadHomeState();
+        if(!hs || (hs.group==null && !Array.isArray(hs.cards))) return;
+
+        // 1) Restore group selection if present
+        if(hs.group){
+          const sel = $('groupSelect');
+          if(sel){
+            const opts = Array.from(sel.options).map(o=>o.value);
+            if(opts.includes(hs.group)){
+              sel.value = hs.group;
+              currentGroup = hs.group;
+              try{ localStorage.setItem(SELECTED_GROUP_KEY, currentGroup); }catch{}
+            }
+          }
+        }
+
+        // 2) Restore deck selection in the dropdown (does not touch textarea yet)
+        const cards = Array.isArray(hs.cards) ? hs.cards.filter(Boolean) : [];
+        if(cards.length){
+          await populateSetSelectFromDir(cards);
+        } else {
+          await populateSetSelectFromDir('');
+        }
+
+        // 3) Prefer saved Working Deck text for both single- and multi-deck
+        const hasSavedText = (typeof hs.text === 'string' && hs.text.trim().length > 0);
+
+        if (cards.length >= 1){
+          if(hasSavedText){
+            $('pairs').value = hs.text;               // ← Working Deck is authoritative
+          } else {
+            // Fallback build (single: file, multi: combined)
+            if (cards.length === 1){
+              try{
+                // Single deck: rebuild if no saved text
+                const ps = await readDeckPairsForSlug(cards[0]);
+                let text = `NAME: ${titleCase(slugToNiceName(cards[0]))}\n\n`;
+                text += ps.map(([jp,en])=>`${jp}\n${en}`).join('\n\n');
+                if (!text.endsWith('\n')) text += '\n';
+                $('pairs').value = text;
+              }catch{ $('pairs').value = ''; }
+            } else {
+              try{
+                const res = await buildCombinedFromSelected(cards);
+                $('pairs').value = (res && res.text) ? res.text : (
+                  Array.isArray(res) ? res.map(([jp,en])=>`${jp}\n${en}`).join('\n\n') : ''
+                );
+              }catch{ $('pairs').value = ''; }
+            }
+          }
+        } else {
+          // No selection; restore any saved scratch text
+          if(hasSavedText) $('pairs').value = hs.text;
+        }
+
+        updateStartEnabled();
+      }catch(e){
+        console.warn('restoreHomeStateIfAny failed', e);
+      }
+    }
+
+    function saveProgress(){
+      // Combined (unsaved) session → stash into sc_home_state
+      if (!state.setSlug) { saveCombinedProgressToHomeState(); return; }
+      // Per-file session → keep existing per-deck progress
+      const obj = {
+        name: titleCase(state.setName||slugToNiceName(state.setSlug)),
+        progress: { idx: state.idx, shown: state.shown },
+        promptSide: state.promptSide,
+        ts: Date.now()
+      };
+      saveProgressObj(state.setSlug, obj);
+    }
+
+    // Shallow array equality for slug lists (order matters)
+    function arraysEqual(a, b){
+      if (!Array.isArray(a) || !Array.isArray(b)) return false;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    // HOME_STATE helpers (safe merge)
+    function loadHomeState(){
+      try { return JSON.parse(localStorage.getItem(HOME_STATE_KEY) || 'null') || {}; }
+      catch { return {}; }
+    }
+    function saveHomeState(obj){
+      try { localStorage.setItem(HOME_STATE_KEY, JSON.stringify(obj)); } catch {}
+    }
+
+
+    // Persist progress for combined (unsaved) sessions into sc_home_state
+    function saveCombinedProgressToHomeState(){
+      // Only when this is a combined session (no per-file slug)
+      if (state.setSlug) return;
+      const hs = loadHomeState();
+      // Keep the current UI slugs as the identity of the combined deck
+      const cards = readSelectedSlugs();
+      hs.combinedProgress = {
+        cards,                            // identity of combined selection (ordered)
+        idx: Math.max(0, Math.min(state.idx|0, Math.max(0, state.cards.length-1))),
+        shown: !!state.shown,
+        promptSide: state.promptSide || 'jp',
+        total: state.cards.length|0,
+        ts: Date.now()
+      };
+
+      saveHomeState(hs);
+    }
+
+    function go(){
+      if(state.cards.length===0)return;
+      if (paused) { paused = false; setPauseLabel('Pause'); }
+      if(state.done){
+        state.idx=0;state.shown=false;state.done=false;updateHUD();saveProgress();return;
+      }
+      if(!state.shown){
+        state.shown=true;updateHUD();saveProgress();
+        beepReveal();
+      } else {
+        state.idx++;
+        if(state.idx>=state.cards.length){
+          // End of deck: show "Done!" in BOTH panels and mark as done
+          $('promptArea').textContent='Done!';
+          $('answerArea').textContent='Done!';
+          $('progress').textContent=`${state.cards.length} / ${state.cards.length}`;
+          state.idx=state.cards.length-1;
+          state.done=true;
+          $('goBtn').textContent='Restart';
+          saveProgress();
+          // If a timer is configured (>0s), schedule auto-restart after countdown
+          if (getPhaseSeconds() > 0) {
+            scheduleCardTimer();
+          }
+        } else {
+          state.shown=false;
+          updateHUD();
+          saveProgress();
+          beepNext();
+        }
+      }
+    }
+
+    function stepBack(){
+      if(state.cards.length===0) return;
+      if (paused) { paused = false; setPauseLabel('Pause'); }
+      if(state.shown){
+        state.shown=false; state.done=false; updateHUD(); saveProgress(); return;
+      }
+      if(state.idx<=0) return;
+      state.idx--; state.shown=false; state.done=false; updateHUD(); saveProgress();
+    }
+
+    function reverseSides(){
+      state.promptSide=state.promptSide==='jp'?'en':'jp';
+      if (paused) { paused = false; setPauseLabel('Pause'); }
+      for(const c of state.cards){const t=c.q;c.q=c.a;c.a=t;}
+      state.shown=false;state.done=false;updateHUD();saveProgress();
+    }
+
+    function shuffleDeck(){
+      if(!state.cards.length) return;
+      if (paused) { paused = false; setPauseLabel('Pause'); }
+      for(let i=state.cards.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [state.cards[i],state.cards[j]]=[state.cards[j],state.cards[i]];
+      }
+      state.idx=0; state.shown=false; state.done=false;
+      updateHUD(); saveProgress();
+      showToast('Shuffled!');
+    }
+
+    async function back(){
+      if (paused) { paused = false; setPauseLabel('Pause'); }
+      // Stop any timers
+      cancelCardTimers();
+      unbindSessionGestures();
+      // Hide session UI, show home
+      $('sessionCard').style.display='none';
+      $('actionBar').style.display='none';
+      document.body.classList.remove('hasBar');
+      $('inputCard').style.display='block';
+
+      // Keep state name/slug as-is; we only leave session mode
+      state.done = false;
+
+      // Ensure buttons reflect current state (enables Scroll, Save, etc.)
+      updateStartEnabled();
+    }
+
+    // ===== Session swipe gestures (Pointer Events only) =====
+    let unbindSwipe = null; // single unbind function
+
+    function bindSessionGestures(){
+      const targets = [ $('promptArea'), $('answerArea') ].filter(Boolean);
+      if(!targets.length) return;
+      unbindSessionGestures();
+
+      const listeners = [];
+      const attach = (el)=>{
+        let sx=0, sy=0, t0=0, active=false, moved=false;
+        const down = (ev)=>{ sx=ev.clientX; sy=ev.clientY; t0=Date.now(); active=true; moved=false; };
+        const move = (ev)=>{ if(!active) return; moved=true; };
+        const up = (ev)=>{
+          if(!active) return; active=false;
+          const dx = ev.clientX - sx, dy = ev.clientY - sy;
+          const adx = Math.abs(dx), ady = Math.abs(dy);
+          const dt  = Date.now() - t0;
+          // thresholds tuned for mobile swipes
+          if (!moved) return;
+          if (Math.max(adx,ady) < 36 || dt > 700) return; // small/slow -> ignore
+          if (adx <= ady) return; // vertical-dominant -> ignore
+          if (dx > 0){
+            // RIGHT: mark difficult, then remove from session
+            const added = markCurrentAsDifficult();
+            showToast(added ? 'Added to Difficult & removed' : 'Already added — removed');
+            cancelCardTimers();
+            removeCurrentCardFromSession();
+          } else {
+            // LEFT: remove from session
+            showToast('Removed from session');
+            removeCurrentCardFromSession();
+          }
+        };
+        el.addEventListener('pointerdown', down, {passive:true});
+        el.addEventListener('pointermove', move, {passive:true});
+        el.addEventListener('pointerup',   up,   {passive:true});
+        listeners.push(()=>{ try{el.removeEventListener('pointerdown', down);}catch{} try{el.removeEventListener('pointermove', move);}catch{} try{el.removeEventListener('pointerup', up);}catch{} });
+      };
+
+      for(const el of targets){ attach(el); }
+      unbindSwipe = ()=>{ for(const off of listeners){ try{off();}catch{} } };
+    }
+
+    function unbindSessionGestures(){
+      try{ unbindSwipe && unbindSwipe(); }catch{}
+      unbindSwipe = null;
+    }
+
+
+    function showToast(msg){
+      const t=$('toast');
+      t.textContent=msg;
+      t.classList.add('show');
+      clearTimeout(showToast._timer);
+      showToast._timer=setTimeout(()=>t.classList.remove('show'), 1600);
+    }
+
+    // ----- Clipboard helper -----
+    async function copyToClipboard(text){
+      if(!text) return false;
+      try{
+        if(navigator.clipboard?.writeText){
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      }catch{}
+      // Fallback for older engines
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      let ok=false; try{ ok=document.execCommand('copy'); }catch{}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    function formatNowStamp(){
+      const d = new Date();
+      const pad = (n)=> String(n).padStart(2,'0');
+      const yyyy = d.getFullYear();
+      const mm   = pad(d.getMonth()+1);
+      const dd   = pad(d.getDate());
+      const hh   = pad(d.getHours());
+      const mi   = pad(d.getMinutes());
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    }
+
+    async function exportReview(){
+      const list = loadDifficult();
+      if(!list || !list.length){ showToast('No difficult cards'); return; }
+      // Build Study Cards format text
+      const header = `Name: Reviews ${formatNowStamp()}`;
+      const body = list.map(r=>`${r.jp || ''}\n${r.en || ''}`).join('\n\n');
+      const txt = `${header}\n\n${body}\n`;
+      const ok = await copyToClipboard(txt);
+      showToast(ok ? `Copied ${list.length} pairs` : 'Copy failed');
+    }
+
+    async function readClipboardText(){
+      try{
+        if(navigator.clipboard?.readText){
+          const t = await navigator.clipboard.readText();
+          return t || '';
+        }
+      }catch{}
+      return '';
+    }
+
+    function ensureNameHeader(text){
+      text = String(text||'');
+      // strip leading whitespace
+      text = text.replace(/^\s+/, '');
+      // already has NAME header?
+      if(/^\s*name\s*:/i.test(text)){
+        // normalize to exactly one blank line after header
+        return text.replace(/^(NAME:.*?)(\r?\n\s*)+?/im, '$1\n\n');
+      }
+      return `NAME: New Deck\n\n${text}`;
+    }
+
+    // Save the current textarea to file (IDB) using Working Deck header, overwriting if needed
+    async function saveCurrentTextareaToFile(){
+      try{
+        const ta = $('pairs');
+        if(!ta){ showToast('No textarea'); return; }
+
+        // Normalize to ensure a valid NAME header
+        let text = ensureNameHeader(ta.value || '');
+
+        // Extract display name from header (without counts)
+        const header = headerNameFromTextarea();
+        const displayName = titleCase(header || 'New Deck');
+
+        // Decide target slug per spec (Working Deck header is authoritative; overwrites allowed)
+        const selected = readSelectedSlugs();
+        let targetSlug;
+        if (selected.length === 1){
+          const chosen = selected[0];
+          const baselineDisplay = titleCase(slugToNiceName(chosen));
+          // If header matches the chosen slug's display name → overwrite that slug
+          targetSlug = (displayName === baselineDisplay) ? chosen : slugify(displayName);
+        } else {
+          // No single selection → derive from header
+          targetSlug = slugify(displayName);
+        }
+
+        // Compute IDB path for this slug in the current group
+        const filename = filenameFromSlug(targetSlug);
+        const path = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+
+        // Write to IDB (overwrite allowed without warning)
+        await storage.writeFile(path, text);
+
+        showToast('Saved');
+
+        // Refresh lists and select the saved deck
+        await populateGroupSelect();
+        await populateSetSelectFromDir(targetSlug);
+
+        // Persist Home state to reflect the save
+        const hs = loadHomeState();
+        hs.group = currentGroup || '__base__';
+        hs.cards = [targetSlug];
+        hs.text  = text; // Working Deck remains authoritative
+        saveHomeState(hs);
+        updateStartEnabled();
+      }catch(err){
+        console.warn('saveCurrentTextareaToFile failed', err);
+        showToast('Save failed');
+      }
+    }
+
+    async function newDeckFromClipboard(){
+      // Build from Difficult list (no clipboard needed)
+      const list = loadDifficult();
+      if(!list || !list.length){ showToast('No difficult cards'); return; }
+
+      const header = `NAME: Reviews ${formatNowStamp()}`;
+      const body = list.map(r=>`${r.jp||''}\n${r.en||''}`).join('\n\n');
+      const txt = `${header}\n\n${body}\n`;
+
+      // Go to Home page
+      $('reviewCard').style.display='none';
+      $('sessionCard').style.display='none';
+      $('marqueeCard').style.display='none';
+      $('inputCard').style.display='block';
+      document.body.classList.remove('hasBar');
+
+      // Select <base> group if groups visible
+      const gsel = $('groupSelect');
+      if(gsel && !gsel.disabled){
+        gsel.value = '__base__';
+        currentGroup = '__base__';
+        try{ localStorage.setItem('sc_selected_group', currentGroup); }catch{}
+        await populateSetSelectFromDir('');
+      }
+
+      // Clear Card selection and populate textarea
+      const ssel = $('setSelect');
+      if(ssel){ ssel.value = ''; }
+      $('pairs').value = txt;
+      updateStartEnabled();
+      showToast(`Loaded ${list.length} pairs`);
+      $('pairs').focus();
+    }
+
+    function showBusy(msg){
+      const b=$('busy'); const m=$('busyMsg');
+      if(m) m.textContent = msg || 'Working…';
+      if(b) b.style.display='flex';
+    }
+    function hideBusy(){ const b=$('busy'); if(b) b.style.display='none'; }
+
+    function sessionActive(){ return $('sessionCard').style.display!=='none'; }
+
+    document.addEventListener('keydown', (e)=>{
+      if(!sessionActive()) return;
+      const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+      if(tag==='input' || tag==='textarea' || document.activeElement.isContentEditable) return;
+
+      if(e.key==='ArrowRight'){ e.preventDefault(); go(); }
+      else if(e.key==='ArrowLeft'){ e.preventDefault(); stepBack(); }
+      else if(e.key==='r' || e.key==='R'){ e.preventDefault(); reverseSides(); }
+      else if(e.key==='s' || e.key==='S'){ e.preventDefault(); shuffleDeck(); }
+    });
+
+    $('pairs').addEventListener('input', updateStartEnabled);
+    $('pairs').addEventListener('focus', updateStartEnabled);
+    $('pairs').addEventListener('blur',  updateStartEnabled);
+
+    // highlight the japanese text to simplify opening in
+    // phone's Translation service
+    function selectJapanese(){
+      if(!sessionActive()) return;
+      const el = state.promptSide==='jp' ? $('promptArea') : $('answerArea');
+      try{
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        el.focus?.();
+        el.click?.(); // harmless; some UIs like it
+      }catch(err){ /* ignore */ }
+    }
+
+    $('startBtn').onclick = (e)=>{ ensureAudio(); startSession(e); };
+    $('goBtn').onclick=()=>{ ensureAudio(); cancelCardTimers(); go(); };
+    $('backStepBtn').onclick=()=>{ cancelCardTimers(); stepBack(); };
+    $('reverseBtn').onclick=()=>{ cancelCardTimers(); reverseSides(); };
+    $('shuffleTopBtn').onclick = ()=>{ cancelCardTimers(); shuffleDeck(); scheduleCardTimer(); };
+    $('selectBtn').onclick = ()=>{ cancelCardTimers(); selectJapanese(); };
+    $('backBtnTop').onclick=back;
+    $('saveBtn').onclick = async () => { await saveCurrentTextareaToFile(); };
+
+    $('pauseBtn').onclick = () => {
+      if (getPhaseSeconds() === 0) return; // no-op when timer disabled
+      if (paused) resumeSessionTimers();
+      else pauseSessionTimers();
+    };
+
+    $('syncLibraryBtn').onclick = async () => {
+      showBusy('Downloading library…');
+      try{
+        await storage.init();
+        const r = await storage.syncFromManifest('library/index.json');
+        showToast(`Synced: ${r.wrote} files${r.errors?`, ${r.errors} errors`:''}`);
+
+        await populateGroupSelect();
+        await populateSetSelectFromDir('');
+      }catch(e){
+        console.warn(e);
+        showToast('IDB sync failed');
+      } finally {
+        hideBusy();
+      }
+      return;
+    };
+
+    $('marqueeBtnStart').onclick = startMarqueeFromSelected;
+    $('carModeBtn').onclick = () => {
+      setCarMode(!carMode);
+    };
+
+    // Bind Save with addEventListener to guarantee firing and log the event
+    $('saveBtn').addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      saveCurrentTextareaToFile();
+      setTimeout(updateStartEnabled, 0);
+    });
+
+    async function normalizeReadResult(v){
+      if (typeof v === 'string') return v;
+      if (v && typeof v.text === 'string') return v.text;
+      return ''; // treat anything else as empty
+    }
+
+    async function loadSelectedCardsIntoTextarea(){
+      const slugs = getSelectedSlugs();
+
+      // Nothing selected
+      if (!slugs.length){
+        $('pairs').value = '';
+        updateStartEnabled();
+        return;
+      }
+
+      // Multi-select → combine
+      if (slugs.length > 1){
+        const { text } = await buildCombinedFromSelected(slugs);
+        $('pairs').value = text;
+        updateStartEnabled();
+        saveHomeStateFromUI();
+        return;
+      }
+
+      // Single selection → load raw text from storage
+      const slug = slugs[0];
+      const filename = filenameFromSlug(slug);
+
+      let text = '';
+      try{
+        const stored = idbPathBySlug.get(slug);
+        const computed = (currentGroup && currentGroup !== '__base__') ? `${currentGroup}/${filename}` : filename;
+        const path = stored || computed;
+        const raw = await storage.readFile(path);
+        text = await normalizeReadResult(raw);
+      }catch(e){
+        alert('Failed to read file. Did it move or get renamed?');
+        console.warn('[read]', e);
+        $('pairs').value = '';
+        updateStartEnabled();
+        saveHomeStateFromUI();
+        return;
+      }
+
+      // Ensure a NAME header exists; if not, synthesize from slug
+      if (!/^\s*name\s*:/i.test(text)) {
+        const display = titleCase(slugToNiceName(slug));
+        text = `NAME: ${display}\n\n${text}`;
+      }
+
+      $('pairs').value = text;
+      updateStartEnabled();
+      saveHomeStateFromUI();
+    }
+    // Bind the loader
+    $('setSelect').addEventListener('change', loadSelectedCardsIntoTextarea);
+    $('marqueeBtnSession').onclick = startMarqueeFromSession;
+    $('exitMarqueeBtn').onclick = () => { stopMarqueeLoop(); hideMarqueeScreen(); };
+    $('fontUpBtn').onclick = () => setMarqueeFont(marquee.fontPx + 4);
+    $('fontDownBtn').onclick = () => setMarqueeFont(marquee.fontPx - 4);
+    $('speedUpBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec + 20); restartMarqueeWithNewSpeed(); };
+    $('speedDownBtn').onclick = () => { setMarqueeSpeed(marquee.pxPerSec - 20); restartMarqueeWithNewSpeed(); };
+    // Marquee repeat counter
+    $('marqueeRepeat').onclick = cycleRepeatMax;
+
+    $('reviewBtn').onclick = showReviewScreen;
+    $('reviewBackBtn').onclick = hideReviewScreen;
+    $('reviewClearBtn').onclick = clearReview;
+    $('reviewExportBtn').onclick = exportReview;
+    $('reviewNewDeckBtn').onclick = newDeckFromClipboard;
+
+    $('timerBtn').onclick = cycleTimer;
+    updateTimerLabel();
+    // Marquee navigation and A/B loop controls
+    $('prevLineBtn').onclick = ()=>{ if(!marquee.lines.length) return; stopMarqueeLoop(); marquee.running = true; showLineAt(prevIndex()); };
+    $('nextLineBtn').onclick = ()=>{ if(!marquee.lines.length) return; stopMarqueeLoop(); marquee.running = true; showLineAt(nextIndex()); };
+    $('abLoopBtn').onclick = ()=>{
+      if(!marqueeHasMultiple()) return;
+      const st = marquee.loop.stage % 3;
+      const cur = currentIndex();
+      if(st===0){
+        marquee.loop.a = cur; marquee.loop.stage = 1; showToast('A set');
+      } else if(st===1){
+        marquee.loop.b = cur; normalizeRange(); marquee.loop.enabled = true; marquee.loop.stage = 2; showToast('Loop A–B');
+        // If current is outside [A,B], jump to A to respect the new loop immediately
+        const n = marquee.lines.length; if(n){
+          const a = marquee.loop.a % n, b = marquee.loop.b % n;
+          if(!(a <= marquee.cursor && marquee.cursor <= b)){
+            stopMarqueeLoop(); marquee.running = true; showLineAt(a);
+            updateABButtonLabel(); return;
+          }
+        }
+      } else {
+        marquee.loop = { a:null, b:null, enabled:false, stage:0 }; showToast('Loop reset');
+      }
+      updateABButtonLabel();
+    };
+
+    // Tap panels to adjust font: Prompt = bigger, Answer = smaller
+    $('promptArea').addEventListener('click', ()=>{ bumpViewFont(0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
+    $('answerArea').addEventListener('click', ()=>{ bumpViewFont(-0.2); showToast(`Font ${viewFontRem.toFixed(1)}rem`); });
+
+    // Initialize stored values (in case user never opened Marquee yet)
+    setMarqueeFont(marquee.fontPx);
+    setMarqueeSpeed(marquee.pxPerSec);
+
+    function normalizeDeckTop(text, defaultName = "Example", setsCount = null, pairCount = null) {
+      // 1) strip all leading whitespace/newlines
+      text = String(text || '').replace(/^\s+/, "");
+
+      // 2) capture/ensure NAME header (case-insensitive)
+      const m = text.match(/^(?:NAME\s*:\s*)([^\r\n]*)/im);
+      let name;
+      if (m) {
+        name = (m[1] || '').trim() || defaultName;
+        text = text.replace(/^(?:NAME\s*:\s*)(.*)/im, `NAME: ${name}`);
+      } else {
+        name = defaultName;
+        text = `NAME: ${name}\n\n` + text;
+      }
+
+      // 3) normalize to exactly ONE empty line after the header
+      text = text.replace(/^(NAME:.*?)(\r?\n\s*)+/, "$1\n\n");
+
+      // 4) if counts provided, rewrite header to include (sets / pairs)
+      if (setsCount != null && pairCount != null) {
+        text = text.replace(/^NAME:\s*.*$/m, `NAME: ${name} (${setsCount} / ${pairCount})`);
+      }
+
+      return text;
+    }
+
+    // Delete selected set
+    $('deleteSetBtn').onclick = async function(){
+      const slug=$('setSelect').value;
+      if(!slug){ return; }
+      try{ localStorage.removeItem(keyForSlug(slug)); }catch{}
+      showToast(`Cleared saved state for: ${slugToNiceName(slug)}`);
+    };
+
+    (async function init(){
+      $('setSelect').disabled = true;
+      try{
+        await storage.init();
+        // First visit? Pull library into IDB.
+        // (You can skip auto-sync if you prefer manual-only.)
+        try{
+          await storage.syncFromManifest('library/index.json');
+        }catch(e){
+          console.warn('[idb] initial sync failed', e);
+        }
+        await populateGroupSelect();
+        await populateSetSelectFromDir('');
+      }catch(e){
+        console.warn(e);
+        showToast('IDB init failed');
+      }
+      updateStartEnabled();
+
+      applyViewFont();
+      updateViewerLayout();
+      return;
+
+    })();
+  </script>
+
+  <script>
+        // Fetch and display build/version from the service worker endpoint
+    function fetchAndShowBuildId() {
+      fetch('./version.txt', { cache: 'no-store' })
+        .then((res) => { if (!res.ok) throw new Error('no version'); return res.text(); })
+        .then((ver) => {
+          const v = (ver || '').trim();
+          const el = document.getElementById('buildId');
+          if (el && v) {
+            el.textContent = v;
+            const footer = document.getElementById('appFooter');
+            if (footer) footer.hidden = false;
+          }
+        })
+        .catch(() => { /* silent if unavailable */ });
+    }
+
+    // Only attempt if a Service Worker is controlling the page
+    if ('serviceWorker' in navigator) {
+      if (navigator.serviceWorker.controller) {
+        fetchAndShowBuildId();
+      } else {
+        // Wait until the new SW takes control, then fetch once
+        const onCtl = () => {
+          try { navigator.serviceWorker.removeEventListener('controllerchange', onCtl); } catch(_) {}
+          fetchAndShowBuildId();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', onCtl);
+      }
+    }
+
+    // Allow user to hide the build footer permanently (until storage is cleared)
+    (function enableFooterHideOnce(){
+      const footerEl = document.getElementById('appFooter');
+      if (!footerEl) return;
+      footerEl.addEventListener('click', () => {
+        footerEl.hidden = true;
+      }, { once: true });
+    })();
+
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(console.error);
+      });
+    }
+  </script>
+</body>
+</html>
