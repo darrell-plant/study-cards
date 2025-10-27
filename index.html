@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Favicons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icon-16.png" />
   <link rel="shortcut icon" href="favicon.ico" />
 
   <link rel="manifest" href="manifest.webmanifest">
@@ -22,7 +22,18 @@
       padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));
     }
 
-    textarea{width:100%;min-height:200px;box-sizing:border-box;}
+    textarea{
+      width:100%;
+      min-height:200px;
+      box-sizing:border-box;
+      background: white !important;
+      color: black !important;
+    }
+
+    select {
+      background: white !important;
+      color: black !important;
+    }
     button{margin:0.20rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#facc15;cursor:pointer}
     button:hover{filter:brightness(1.08)}
     /* Disabled buttons look clearly inactive */
