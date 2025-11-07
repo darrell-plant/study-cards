@@ -28,11 +28,13 @@
       box-sizing:border-box;
       background: white !important;
       color: black !important;
+      font-size: 1.5rem;
     }
 
     select {
       background: white !important;
       color: black !important;
+      font-size: 1.5rem;
     }
     button{margin:0.20rem;padding:0.6rem 1.1rem;border-radius:12px;border:1px solid #334155;background:#1f2937;color:#facc15;cursor:pointer}
     button:hover{filter:brightness(1.08)}
@@ -1956,7 +1958,7 @@ Excuse me"></textarea><br>
             const added = markCurrentAsDifficult();
             showToast(added ? 'Added to Difficult & removed' : 'Already added — removed');
             cancelCardTimers();
-            removeCurrentCardFromSession();
+            //removeCurrentCardFromSession();
           } else {
             // LEFT: remove from session
             showToast('Removed from session');
