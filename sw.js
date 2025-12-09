@@ -1,5 +1,5 @@
 // sw.js
-const CACHE = 'sc-v42';
+const CACHE = 'sc-v43';
 
 const VERSION_ENDPOINT = 'version.txt';
 const VERSION_PATHNAME = new URL(VERSION_ENDPOINT, self.registration.scope).pathname;

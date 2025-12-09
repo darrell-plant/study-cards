@@ -413,6 +413,9 @@ Excuse me"></textarea><br>
       // 4) Finish boot: allow autosave snapshots
       booting = false;
       saveHomeStateFromUI();
+
+      // 5) Wire Bluetooth / media-key controls (Play/Pause/Next/Previous)
+      initMediaSessionHandlers();
     }
 
     // ---- Storage drivers
@@ -1546,6 +1549,53 @@ Excuse me"></textarea><br>
         nextTO = setTimeout(() => { if (sessionActive() && !paused) go(); }, ms);
       }
       startCountdown(ms);
+    }
+
+    // ===== Media Session / Bluetooth remote integration =====
+    function togglePauseFromRemote() {
+      // Only meaningful when a session is running, in car-mode, and timers are enabled
+      if (typeof sessionActive === 'function' && !sessionActive()) return;
+      if (!carMode) return;
+      if (getPhaseSeconds() === 0) return; // timer disabled; Pause button is inactive
+
+      if (paused) {
+        resumeSessionTimers();
+      } else {
+        pauseSessionTimers();
+      }
+    }
+
+    function initMediaSessionHandlers() {
+      if (!('mediaSession' in navigator)) return;
+
+      try {
+        // Map Previous → app Back (stepBack)
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          if (typeof sessionActive === 'function' && !sessionActive()) return;
+          stepBack();
+        });
+      } catch (_) {}
+
+      try {
+        // Map Next → app Go
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          if (typeof sessionActive === 'function' && !sessionActive()) return;
+          go();
+        });
+      } catch (_) {}
+
+      try {
+        // In car-mode only, Play / Pause toggle the app's Pause/Continue button
+        navigator.mediaSession.setActionHandler('play', () => {
+          togglePauseFromRemote();
+        });
+      } catch (_) {}
+
+      try {
+        navigator.mediaSession.setActionHandler('pause', () => {
+          togglePauseFromRemote();
+        });
+      } catch (_) {}
     }
 
     function mapPairsToCards(pairs,side){return pairs.map(([jp,en])=>({q:side==='jp'?jp:en,a:side==='jp'?en:jp}));}
