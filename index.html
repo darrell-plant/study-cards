@@ -386,6 +386,10 @@ Excuse me"></textarea><br>
     <span class="buildTag">Build: <span id="buildId"></span></span>
   </footer>
 
+  <!-- Hidden silent audio to claim media-session focus for Bluetooth remotes -->
+  <audio id="scSilentAudio" loop preload="auto" style="display:none">
+    <source src="data:audio/wav;base64,UklGRkZWAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YSJWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" type="audio/wav">
+  </audio>
 
   <script src="js/idb-driver.js"></script>
 
@@ -1492,6 +1496,7 @@ Excuse me"></textarea><br>
       updateTimerLabel();
       bindSessionGestures();
       updatePauseButtonEnabled();
+      activateMediaSession();
     }
 
     function exitSession(){
@@ -1502,6 +1507,7 @@ Excuse me"></textarea><br>
       $('inputCard').style.display='block';
       document.body.classList.remove('hasBar');
       updatePauseButtonEnabled();
+      deactivateMediaSession();
     }
 
     function setPauseLabel(txt){
@@ -1549,6 +1555,36 @@ Excuse me"></textarea><br>
         nextTO = setTimeout(() => { if (sessionActive() && !paused) go(); }, ms);
       }
       startCountdown(ms);
+    }
+
+    function activateMediaSession() {
+      if (!('mediaSession' in navigator)) return;
+      const a = $('scSilentAudio');
+      if (a) {
+        a.play().catch(() => {
+          // Playback may fail if not triggered by a direct user gesture; ignore.
+        });
+      }
+      try {
+        const title = state.setName || 'Study Cards';
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title,
+          artist: 'Study Cards',
+          album: 'Deck Session'
+        });
+        navigator.mediaSession.playbackState = 'playing';
+      } catch (_) {}
+    }
+
+    function deactivateMediaSession() {
+      if (!('mediaSession' in navigator)) return;
+      const a = $('scSilentAudio');
+      if (a) {
+        try { a.pause(); } catch (_) {}
+      }
+      try {
+        navigator.mediaSession.playbackState = 'paused';
+      } catch (_) {}
     }
 
     // ===== Media Session / Bluetooth remote integration =====
